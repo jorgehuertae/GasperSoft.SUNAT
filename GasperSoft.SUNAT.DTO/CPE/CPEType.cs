@@ -12,11 +12,6 @@ namespace GasperSoft.SUNAT.DTO.CPE
     /// </summary>
     public class CPEType
     {
-        ///// <summary>
-        ///// Representa la version Ubl del xml a generar(2.0 ó 2.1)
-        ///// </summary>
-        //public string versionUbl { get; set; }
-
         /// <summary>
         /// UBL 2.1
         /// Para efectos de identificar la transacción se deberá indicar el código de operación que
@@ -149,7 +144,7 @@ namespace GasperSoft.SUNAT.DTO.CPE
         /// UBL 2.1
         /// Representa el monto sobre el cual se calcula el ISC
         /// </summary>
-        public decimal montoBaseISC { get; set; }
+        public decimal sumatoriaMontoBaseISC { get; set; }
 
         /// <summary>
         /// La sumatoria de la propiedad montoISC de cada item
@@ -170,11 +165,6 @@ namespace GasperSoft.SUNAT.DTO.CPE
         /// </summary>
         public decimal sumatoriaIGVGratuitas { get; set; }
 
-        /// <summary>
-        /// Representa el % del IGV valor del 1 al 100
-        /// </summary>
-        public decimal tasaIGV { get; set; }
-
         #endregion
 
         #region ICBPER
@@ -192,7 +182,7 @@ namespace GasperSoft.SUNAT.DTO.CPE
         /// UBL 2.1
         /// Representa el monto sobre el cual se calcula el valor otros tributos(sumatoriaOth)
         /// </summary>
-        public decimal montoBaseOTH { get; set; }
+        public decimal sumatoriaMontoBaseOTH { get; set; }
 
         /// <summary>
         /// La suma total de otros tributos aplicados al comprobante
