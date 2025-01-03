@@ -711,25 +711,25 @@ namespace GasperSoft.SUNAT
 
                     foreach (var item in _cpe.motivosNota)
                     {
-                        if (!Validaciones.IsValidSeries(item.tipoDocumento, item.serie))
-                        {
-                            _mensajesError.AddMensaje(CodigoError.V0015, $"motivosNota[{indexMotivoNota}].serie = '{item.serie}' no valido para motivosNota[{indexMotivoNota}].tipoDocumento = '{item.tipoDocumento}' ");
-                            continue;
-                        }
-
-                        if (item.serie.StartsWith("F") || item.serie.StartsWith("B"))
-                        {
-                            if (_cpe.serie[0] != item.serie[0])
-                            {
-                                _mensajesError.AddMensaje(CodigoError.V0016);
-                                continue;
-                            }
-                        }
-
                         #region Validaciones Nota de Credito 
 
                         if (_cpe.tipoDocumento == "07")
                         {
+                            if (!Validaciones.IsValidSeries(item.tipoDocumento, item.serie))
+                            {
+                                _mensajesError.AddMensaje(CodigoError.V0015, $"motivosNota[{indexMotivoNota}].serie = '{item.serie}' no valido para motivosNota[{indexMotivoNota}].tipoDocumento = '{item.tipoDocumento}' ");
+                                continue;
+                            }
+
+                            if (item.serie.StartsWith("F") || item.serie.StartsWith("B"))
+                            {
+                                if (_cpe.serie[0] != item.serie[0])
+                                {
+                                    _mensajesError.AddMensaje(CodigoError.V0016);
+                                    continue;
+                                }
+                            }
+
                             //Validar el motivo de la nota de credito con el catalogo N° 09
                             if (!OnValidarCatalogoSunat("09", item.tipoNota))
                             {
@@ -782,6 +782,21 @@ namespace GasperSoft.SUNAT
                                 //Si no se trata de una nota de debito por penalidad entonces debe haber un tipo de documento de referencia valido
                                 if (item.tipoNota != "03")
                                 {
+                                    if (!Validaciones.IsValidSeries(item.tipoDocumento, item.serie))
+                                    {
+                                        _mensajesError.AddMensaje(CodigoError.V0015, $"motivosNota[{indexMotivoNota}].serie = '{item.serie}' no valido para motivosNota[{indexMotivoNota}].tipoDocumento = '{item.tipoDocumento}' ");
+                                        continue;
+                                    }
+
+                                    if (item.serie.StartsWith("F") || item.serie.StartsWith("B"))
+                                    {
+                                        if (_cpe.serie[0] != item.serie[0])
+                                        {
+                                            _mensajesError.AddMensaje(CodigoError.V0016);
+                                            continue;
+                                        }
+                                    }
+
                                     if (item.tipoDocumento != "01" && item.tipoDocumento != "03" && item.tipoDocumento != "12")
                                     {
                                         _mensajesError.AddMensaje(CodigoError.V0014, $"motivosNota[{indexMotivoNota}].tipoDocumento");
