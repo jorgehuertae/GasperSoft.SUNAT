@@ -10,7 +10,7 @@ namespace GasperSoft.SUNAT
     /// <summary>
     /// Validaciones de SUNAT y Otras
     /// </summary>
-    public class Validaciones
+    public static class Validaciones
     {
         internal static bool IsNullOrWhiteSpace(string value)
         {
@@ -437,7 +437,7 @@ namespace GasperSoft.SUNAT
         /// <param name="input">La cadena a evaluar</param>
         public static bool IsValidCodigoInformacionAdicional(string input)
         {
-            var regex = new Regex(@"^[0-9a-zA-Z]{2,30}$");
+            var regex = new Regex(@"^[0-9a-zA-Z_]{2,30}$");
 
             return regex.IsMatch(input ?? "");
         }
