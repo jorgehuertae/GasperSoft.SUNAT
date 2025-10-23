@@ -3,6 +3,8 @@
 // Contacto: it@gaspersoft.com
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 
 namespace GasperSoft.SUNAT
@@ -456,5 +458,15 @@ namespace GasperSoft.SUNAT
         /// <param name="codigoRegimenRetencion">El codigo de retencion (Catalogo 23)</param>
         /// <param name="tasa">Tasa de retencion (Catalogo 23)</param>
         public delegate bool ValidarTasaRetencion(string codigoRegimenRetencion, decimal tasa);
+
+        /// <summary>
+        /// Cuenta los errores que no son de validacion de nivel 4 (V4xxx y S4xxx) que son solo advertencias
+        /// </summary>
+        /// <param name="errors"></param>
+        /// <returns></returns>
+        public static int GetTotalErrores(List<Error> errors)
+        {
+            return errors.Where(e => !e.codigo.StartsWith("V4") && !e.codigo.StartsWith("S4")).Count();
+        }
     }
 }
