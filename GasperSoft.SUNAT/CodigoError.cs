@@ -2,6 +2,10 @@
 // Copyright (C) 2024 GasperSoft.
 // Contacto: it@gaspersoft.com
 
+using System.Drawing;
+using System.Runtime.ConstrainedExecution;
+using System.Security.Cryptography;
+
 namespace GasperSoft.SUNAT
 {
     /// <summary>
@@ -46,6 +50,10 @@ namespace GasperSoft.SUNAT
         public const string S3355 = "S3355:El Numero de Constancia de Inscripcion Vehicular o Certificado de Habilitacion Vehicular o la TUC (fisica o electronica) no cumple con el formato establecido";
         public const string S3357 = "S3357:Debe consignar informacion del conductor principal";
         public const string S3377 = "S3377:La Partida arancelaria no cumple con el formato establecido";
+        public const string S3380 = "S3380:Debe consignar el RUC del emisor del documento relacionado";
+        public const string S3381 = "S3381:El RUC del emisor del documento relacionado no corresponde";
+        public const string S3382 = "S3382:El Tipo de documento del emisor del documento relacionado debe ser Numero de RUC";
+        public const string S3409 = "S3409:El Numero de RUC no cumple con el formato establecido"; 
         public const string S3414 = "S3414:El Numero de RUC  asociado al punto de partida/llegada debe ser el igual al Numero de RUC del remitente";
         public const string S3426 = "S3426:Si se trata de un bien normalizado por SUNAT, debe indicarse la Partida arancelaria";
         public const string S3430 = "S3430:La Numeracion de la DAM o DS no se encuentra consignado como documento relacionado";
@@ -83,7 +91,7 @@ namespace GasperSoft.SUNAT
 
 
         //Validaciones(Les fui asignado un código correlativo)
-        public const string V0001 = "V0001:Tipo de documento de identidad no es válido";
+        public const string V0001 = "V0001:Tipo de documento de identidad no es válido (catálogo nro. 6)";
         public const string V0002 = "V0002:Ruc no valido";
         public const string V0003 = "V0003:El valor de la propiedad debe ser un valor alfanumérico de 1 a 500 caracteres, y no empiezan ni terminan con espacios en blanco";
         public const string V0004 = "V0004:El valor de la propiedad debe ser un valor alfanumérico de 3 a 500 caracteres, y no empiezan ni terminan con espacios en blanco";
@@ -107,9 +115,9 @@ namespace GasperSoft.SUNAT
         public const string V0022 = "V0022:El valor de la propiedad debe ser cero, para notas de crédito motivo 13 (Ajustes – montos y/o fechas de pago)";
         public const string V0023 = "V0023:El valor de la propiedad 'tasaIsc' no es válido, si el ítem no está afecto al ISC asigne 0 a la propiedad 'montoIsc'";
         public const string V0024 = "V0024:El valor de la propiedad 'codSistemaCalculoIsc' no es válido, si el ítem no está afecto al ISC asigne 0 a la propiedad 'montoIsc'";
-        public const string V0025 = "V0025:Documento de identidad del adquirente debe ser '1' o '6' cuando la operación no es de exportación";
+        public const string V0025 = "V0025:El valor de la propiedad debe ser un valor alfanumérico de 2 a 30 caracteres, y no empiezan ni terminan con espacios en blanco";
         public const string V0026 = "V0026:Existe al menos un ítem con 'codAfectacionIgv'= 40 y la propiedad 'codigoTipoOperacion' no es de exportación";
-        public const string V0027 = "V0027:Solo se permiten los valores: '01', '03', '07' y '08'";
+        public const string V0027 = "V0027:Solo se permiten los valores: '01', '03', '07' y '08' para la propiedad 'tipoDocumento'";
         public const string V0028 = "V0028:El valor no existe el catálogo N° 02";
         public const string V0029 = "V0029:El valor no existe el catálogo N° 03";
         public const string V0030 = "V0030:El valor no existe el catálogo N° 07";
@@ -123,6 +131,7 @@ namespace GasperSoft.SUNAT
         public const string V0038 = "V0038:El codigo de moneda de ser PEN";
         public const string V0039 = "V0039:El valor no existe el catálogo N° 23 o la tasa no corresponde al código de régimen de retención ingresado";
         public const string V0040 = "V0040:El valor no existe el catálogo N° 25";
+        public const string V0041 = "V0041:Código de información adicional repetido";
 
         //Mensajes genericos para validar una propiedad
         public const string V0101 = "V0101:El valor de la propiedad deber ser NULL";

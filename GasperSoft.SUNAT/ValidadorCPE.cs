@@ -10,6 +10,9 @@ using static GasperSoft.SUNAT.Validaciones;
 
 namespace GasperSoft.SUNAT
 {
+    /// <summary>
+    /// Validador de Facturas, Boletas Notas de credito/debito
+    /// </summary>
     public class ValidadorCPE
     {
         private decimal _montoMaximoClienteAnonimoBoleta = 700;
@@ -43,15 +46,18 @@ namespace GasperSoft.SUNAT
         }
 
         /// <summary>
-        /// Inicia una nueva instancia de la clave ValidadorCPE
+        /// Inicia una nueva instancia de la clase ValidadorCPE
         /// </summary>
-        /// <param name="cpe">El Cpe a Validar</param>
+        /// <param name="cpe">El CPE a Validar</param>
         public ValidadorCPE(CPEType cpe)
         {
             _cpe = cpe;
             _mensajesError = new List<Error>();
         }
 
+        /// <summary>
+        /// Tipo de cambio referencial para las facturas en dolares
+        /// </summary>
         public decimal TipoCambioReferencial
         {
             set
@@ -64,6 +70,9 @@ namespace GasperSoft.SUNAT
             }
         }
 
+        /// <summary>
+        /// Un valor entre 0.20 y 1 que indica la tolerancia de los calculos
+        /// </summary>
         public decimal ToleranciaCalculo
         {
             get
@@ -86,6 +95,9 @@ namespace GasperSoft.SUNAT
             }
         }
 
+        /// <summary>
+        /// Errores de validacion del CPE
+        /// </summary>
         public List<Error> Errors
         {
             get
@@ -99,6 +111,10 @@ namespace GasperSoft.SUNAT
         /// </summary>
         public event ValidarCatalogoSunat OnValidarCatalogoSunat;
 
+        /// <summary>
+        /// Valida el CPE
+        /// </summary>
+        /// <returns>Valor booleano que indica si el CPE es valido</returns>
         public bool Validar()
         {
             _mensajesError.Clear();
@@ -126,15 +142,15 @@ namespace GasperSoft.SUNAT
                 return false;
             }
 
-            if (!string.IsNullOrEmpty(_cpe.horaEmision))
+            if (!IsNullOrWhiteSpace(_cpe.horaEmision))
             {
-                if (!Validaciones.IsValidTimeSunat(_cpe.horaEmision))
+                if (!IsValidTimeSunat(_cpe.horaEmision))
                 {
                     _mensajesError.AddMensaje(CodigoError.S3438, "horaEmision");
                 }
             }
 
-            if (_cpe.detalles?.Count == 0)
+            if ((_cpe.detalles?.Count ?? 0) == 0)
             {
                 _mensajesError.AddMensaje(CodigoError.V0007);
                 return false;
@@ -150,13 +166,16 @@ namespace GasperSoft.SUNAT
 
             #region Validacion del Adquirente
 
-            if (!Validaciones.IsValidTipoDocumentoIdentidad(_cpe.adquirente.tipoDocumentoIdentificacion))
+            if (!OnValidarCatalogoSunat("06", _cpe.adquirente.tipoDocumentoIdentificacion))
             {
-                _mensajesError.AddMensaje(CodigoError.S2800, "adquirente.tipoDocumentoIdentificacion");
-                return false;
+                if (_cpe.adquirente.tipoDocumentoIdentificacion != "-")
+                {
+                    _mensajesError.AddMensaje(CodigoError.V0001, $"adquirente.tipoDocumentoIdentificacion = '{_cpe.adquirente.tipoDocumentoIdentificacion}' (Usar un '-' para clientes varios)");
+                    return false;
+                }
             }
 
-            if (!Validaciones.IsValidDocumentoIdentidadSunat(_cpe.adquirente.numeroDocumentoIdentificacion, _cpe.adquirente.tipoDocumentoIdentificacion))
+            if (!IsValidDocumentoIdentidadSunat(_cpe.adquirente.numeroDocumentoIdentificacion, _cpe.adquirente.tipoDocumentoIdentificacion))
             {
                 if (_cpe.adquirente.tipoDocumentoIdentificacion == "6")
                 {
@@ -175,17 +194,87 @@ namespace GasperSoft.SUNAT
                 }
             }
 
-            if (!Validaciones.IsValidTextSunat(_cpe.adquirente.nombre, 3, 1500))
+            if (!IsValidTextSunat(_cpe.adquirente.nombre, 3, 1500))
             {
                 _mensajesError.AddMensaje(CodigoError.V0006, $"adquirente.nombre = '{_cpe.adquirente.nombre}'");
                 return false;
+            }
+
+            if (_cpe.tipoDocumento == "03")
+            {
+                //Obligatorio informar datos del cliente cuando la factura supera los 700 soles
+                if (ConvertirMonedaNacional(_cpe.codMoneda, _cpe.importeTotal, _tipoCambioReferencial) >= _montoMaximoClienteAnonimoBoleta)
+                {
+                    if (_cpe.adquirente.tipoDocumentoIdentificacion == "-")
+                    {
+                        _mensajesError.AddMensaje(CodigoError.V0008);
+                        return false;
+                    }
+                }
+
+                //Si 'Tipo de operación' es "0200" o "0201" o "0203" o "0204" o "0205" o "0206" o "0207", "0208" o "0401", el valor del Tag UBL es  6-RUC
+                if ((new List<string>() { "0200", "0201", "0203", "0204", "0205", "0206", "0207", "0208", "0401" }).Contains(_cpe.codigoTipoOperacion))
+                {
+                    if (_cpe.adquirente.tipoDocumentoIdentificacion == "6")
+                    {
+                        _mensajesError.AddMensaje(CodigoError.S2800, "adquirente.tipoDocumentoIdentificacion no puede ser '6'");
+                        return false;
+                    }
+                }
+            }
+
+            if (_cpe.tipoDocumento == "01")
+            {
+                //Si 'Tipo de operación' es '0200' o '0201' o '0204', y no existe Leyenda con 'Código de leyenda' igual a '2008', el valor del Tag UBL es  '6' 
+                if ((new List<string>() { "0200", "0201", "0203", "0204", "0205", "0206", "0207", "0208" }).Contains(_cpe.codigoTipoOperacion))
+                {
+                    if (!_cpe.indVentaZonaComercialTacna && _cpe.adquirente.tipoDocumentoIdentificacion == "6")
+                    {
+                        _mensajesError.AddMensaje(CodigoError.S2800, "adquirente.tipoDocumentoIdentificacion no puede ser '6'");
+                        return false;
+                    }
+                }
+
+                //Si 'Tipo de operación' es '0200' o '0201' o '0202' o '0203' '0204' o '0205' '0206' o '0207' '0208' o '0401', y el valor del Tag UBL es diferente al listado y guion '-'
+                //Nota: Previamente ya se valido que _cpe.adquirente.tipoDocumentoIdentificacion este en el Catalogo nro. '06' o sea guion '-'
+                //entonces solo validamos si no es uno de esos codigos
+                if (!(new List<string>() { "0200", "0201", "0202", "0203", "0204", "0205", "0206", "0207", "0208", "0401" }).Contains(_cpe.codigoTipoOperacion))
+                {
+                    if (_cpe.codigoTipoOperacion == "0112")
+                    {
+                        //Si 'Tipo de operación' es '0112 Venta Interna - Sustenta Gastos Deducibles Persona Natural', el valor del Tag UBL es diferente de '1' y '6'
+                        if (_cpe.adquirente.tipoDocumentoIdentificacion != "6" && _cpe.adquirente.tipoDocumentoIdentificacion != "1")
+                        {
+                            _mensajesError.AddMensaje(CodigoError.S2800, "adquirente.tipoDocumentoIdentificacion debe ser '1' o '6' cuando codigoTipoOperacion = '0112'");
+                            return false;
+                        }
+                    }
+                    else if (_cpe.codigoTipoOperacion == "2106")
+                    {
+                        //Si 'Tipo de operación' es '2106 Venta nacional a turistas - Tax Free', el valor del Tag UBL es diferente de '7', 'B' y 'G'.
+                        if (_cpe.adquirente.tipoDocumentoIdentificacion != "7" && _cpe.adquirente.tipoDocumentoIdentificacion != "B" && _cpe.adquirente.tipoDocumentoIdentificacion != "G")
+                        {
+                            _mensajesError.AddMensaje(CodigoError.S2800, "adquirente.tipoDocumentoIdentificacion debe ser '7','B' o 'G' cuando codigoTipoOperacion = '2106'");
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        //Si no es uno de los cuatro casos anteriores, el valor del Tag UBL es diferente de '6'
+                        if (_cpe.adquirente.tipoDocumentoIdentificacion != "6")
+                        {
+                            _mensajesError.AddMensaje(CodigoError.S2800, "adquirente.tipoDocumentoIdentificacion debe ser '6'");
+                            return false;
+                        }
+                    }
+                }
             }
 
             #endregion
 
             #region Validacion de Propiedades del comprobante
 
-            if (string.IsNullOrEmpty(_cpe.codigoEstablecimiento))
+            if (IsNullOrWhiteSpace(_cpe.codigoEstablecimiento))
             {
                 _mensajesError.AddMensaje(CodigoError.S3030, "codigoEstablecimiento");
                 return false;
@@ -193,7 +282,7 @@ namespace GasperSoft.SUNAT
 
             if (_cpe.tipoDocumento == "01" || _cpe.tipoDocumento == "03")
             {
-                if (string.IsNullOrEmpty(_cpe.codigoTipoOperacion))
+                if (IsNullOrWhiteSpace(_cpe.codigoTipoOperacion))
                 {
                     _mensajesError.AddMensaje(CodigoError.S3205, "codigoTipoOperacion");
                     return false;
@@ -230,18 +319,16 @@ namespace GasperSoft.SUNAT
                 _mensajesError.AddMensaje(CodigoError.V0102, "fechaEmision");
             }
 
-            var _documentosPermitidos = new List<string> { "01", "03", "07", "08" };
-
-            if (!_documentosPermitidos.Contains(_cpe.tipoDocumento))
+            if (!(new List<string> { "01", "03", "07", "08" }).Contains(_cpe.tipoDocumento))
             {
-                _mensajesError.AddMensaje(CodigoError.V0027, "tipoDocumento");
+                _mensajesError.AddMensaje(CodigoError.V0027, $"tipoDocumento = '{_cpe.tipoDocumento}'");
                 return false;
             }
 
             //Si no es entero entonces es una serie de documento electronico y debemos validarlo
-            if (!Validaciones.IsInteger(_cpe.serie.Substring(0, 1)))
+            if (!IsInteger(_cpe.serie.Substring(0, 1)))
             {
-                if (!Validaciones.IsValidSeries(_cpe.tipoDocumento, _cpe.serie))
+                if (!IsValidSeries(_cpe.tipoDocumento, _cpe.serie))
                 {
                     _mensajesError.AddMensaje(CodigoError.V0009);
                 }
@@ -259,9 +346,9 @@ namespace GasperSoft.SUNAT
                 }
             }
 
-            if (!string.IsNullOrEmpty(_cpe.ordenCompra))
+            if (!IsNullOrWhiteSpace(_cpe.ordenCompra))
             {
-                if (!Validaciones.IsValidOrdenCompra(_cpe.ordenCompra))
+                if (!IsValidOrdenCompra(_cpe.ordenCompra))
                 {
                     _mensajesError.AddMensaje(CodigoError.S4233);
                 }
@@ -276,16 +363,14 @@ namespace GasperSoft.SUNAT
 
             if (_cpe.anticipos?.Count > 0)
             {
-                //Solo se permite:
-                // '02' = FACTURA – EMITIDA POR ANTICIPOS
-                // '03' = BOLETA DE VENTA – EMITIDA POR ANTICIPOS
-                var _documentosAnticipoPermitidos = new List<string> { "02", "03" };
-
                 _idRecord = 0;
 
                 foreach (var item in _cpe.anticipos)
                 {
-                    if (!_documentosAnticipoPermitidos.Contains(item.tipoDocumento))
+                    //Solo se permite:
+                    // '02' = FACTURA – EMITIDA POR ANTICIPOS
+                    // '03' = BOLETA DE VENTA – EMITIDA POR ANTICIPOS
+                    if (!(new List<string> { "02", "03" }).Contains(item.tipoDocumento))
                     {
                         _mensajesError.AddMensaje(CodigoError.S2505, $"anticipos[{_idRecord}].tipoDocumento = '{item.tipoDocumento}'");
                     }
@@ -335,15 +420,13 @@ namespace GasperSoft.SUNAT
 
                 var _importePercepcionCalculado = _cpe.percepcion.montoBase * _cpe.percepcion.tasa;
 
-                if (!Validaciones.ValidarToleranciaCalculo(_cpe.percepcion.importe, decimal.Round(_importePercepcionCalculado, 2), _toleranciaCalculo))
+                if (!ValidarToleranciaCalculo(_cpe.percepcion.importe, decimal.Round(_importePercepcionCalculado, 2), _toleranciaCalculo))
                 {
                     _mensajesError.AddMensaje(CodigoError.V2000, $"percepcion.importe incorrecto Valor enviado: {_cpe.percepcion.importe} Valor calculado: {decimal.Round(_importePercepcionCalculado, 2)}; Formula: percepcion.importe = percepcion.montoBase * percepcion.tasa");
                     return false;
                 }
 
-                var _codigosPercepcionPermitidos = new List<string>() { "51", "52", "53" };
-
-                if (!_codigosPercepcionPermitidos.Contains(_cpe.percepcion.codigo))
+                if (!(new List<string>() { "51", "52", "53" }).Contains(_cpe.percepcion.codigo))
                 {
                     _mensajesError.AddMensaje(CodigoError.S3093, $"percepcion.codigo ='{_cpe.percepcion.codigo}' Solo se permite '51', '52' o '53'");
                     return false;
@@ -366,7 +449,7 @@ namespace GasperSoft.SUNAT
             {
                 _mensajesError.AddMensaje(CodigoError.V0012, "tasaDescuentoGlobal");
             }
-            else if (!Validaciones.IsValidCantidadDecimalesMaximos(_cpe.tasaDescuentoGlobal, 5))
+            else if (!IsValidCantidadDecimalesMaximos(_cpe.tasaDescuentoGlobal, 5))
             {
                 _mensajesError.AddMensaje(CodigoError.V0011, "tasaDescuentoGlobal");
             }
@@ -377,7 +460,7 @@ namespace GasperSoft.SUNAT
                 {
                     _mensajesError.AddMensaje(CodigoError.V0012, "descuentoGlobalAfectaBI.montoBase");
                 }
-                else if (!Validaciones.IsValidCantidadDecimalesMaximos(_cpe.descuentoGlobalAfectaBI.montoBase, 2))
+                else if (!IsValidCantidadDecimalesMaximos(_cpe.descuentoGlobalAfectaBI.montoBase, 2))
                 {
                     _mensajesError.AddMensaje(CodigoError.V0011, "descuentoGlobalAfectaBI.montoBase");
                 }
@@ -386,7 +469,7 @@ namespace GasperSoft.SUNAT
                 {
                     _mensajesError.AddMensaje(CodigoError.V0012, "descuentoGlobalAfectaBI.importe");
                 }
-                else if (!Validaciones.IsValidCantidadDecimalesMaximos(_cpe.descuentoGlobalAfectaBI.importe, 2))
+                else if (!IsValidCantidadDecimalesMaximos(_cpe.descuentoGlobalAfectaBI.importe, 2))
                 {
                     _mensajesError.AddMensaje(CodigoError.V0011, "descuentoGlobalAfectaBI.importe");
                 }
@@ -395,7 +478,7 @@ namespace GasperSoft.SUNAT
             {
                 _mensajesError.AddMensaje(CodigoError.V0012, "totalOperacionesGravadas");
             }
-            else if (!Validaciones.IsValidCantidadDecimalesMaximos(_cpe.totalOperacionesGravadas, 2))
+            else if (!IsValidCantidadDecimalesMaximos(_cpe.totalOperacionesGravadas, 2))
             {
                 _mensajesError.AddMensaje(CodigoError.V0011, "totalOperacionesGravadas");
             }
@@ -404,7 +487,7 @@ namespace GasperSoft.SUNAT
             {
                 _mensajesError.AddMensaje(CodigoError.V0012, "totalOperacionesExoneradas");
             }
-            else if (!Validaciones.IsValidCantidadDecimalesMaximos(_cpe.totalOperacionesExoneradas, 2))
+            else if (!IsValidCantidadDecimalesMaximos(_cpe.totalOperacionesExoneradas, 2))
             {
                 _mensajesError.AddMensaje(CodigoError.V0011, "totalOperacionesExoneradas");
             }
@@ -413,7 +496,7 @@ namespace GasperSoft.SUNAT
             {
                 _mensajesError.AddMensaje(CodigoError.V0012, "totalOperacionesInafectas");
             }
-            else if (!Validaciones.IsValidCantidadDecimalesMaximos(_cpe.totalOperacionesInafectas, 2))
+            else if (!IsValidCantidadDecimalesMaximos(_cpe.totalOperacionesInafectas, 2))
             {
                 _mensajesError.AddMensaje(CodigoError.V0011, "totalOperacionesInafectas");
             }
@@ -422,7 +505,7 @@ namespace GasperSoft.SUNAT
             {
                 _mensajesError.AddMensaje(CodigoError.V0012, "totalOperacionesExportacion");
             }
-            else if (!Validaciones.IsValidCantidadDecimalesMaximos(_cpe.totalOperacionesExportacion, 2))
+            else if (!IsValidCantidadDecimalesMaximos(_cpe.totalOperacionesExportacion, 2))
             {
                 _mensajesError.AddMensaje(CodigoError.V0011, "totalOperacionesExportacion");
             }
@@ -431,7 +514,7 @@ namespace GasperSoft.SUNAT
             {
                 _mensajesError.AddMensaje(CodigoError.V0012, "totalOperacionesGratuitas");
             }
-            else if (!Validaciones.IsValidCantidadDecimalesMaximos(_cpe.totalOperacionesGratuitas, 2))
+            else if (!IsValidCantidadDecimalesMaximos(_cpe.totalOperacionesGratuitas, 2))
             {
                 _mensajesError.AddMensaje(CodigoError.V0011, "totalOperacionesGratuitas");
             }
@@ -440,7 +523,7 @@ namespace GasperSoft.SUNAT
             {
                 _mensajesError.AddMensaje(CodigoError.V0012, "totalDescuentosNoAfectaBI");
             }
-            else if (!Validaciones.IsValidCantidadDecimalesMaximos(_cpe.totalDescuentosNoAfectaBI, 2))
+            else if (!IsValidCantidadDecimalesMaximos(_cpe.totalDescuentosNoAfectaBI, 2))
             {
                 _mensajesError.AddMensaje(CodigoError.V0011, "totalDescuentosNoAfectaBI");
             }
@@ -449,7 +532,7 @@ namespace GasperSoft.SUNAT
             {
                 _mensajesError.AddMensaje(CodigoError.V0012, "sumatoriaISC");
             }
-            else if (!Validaciones.IsValidCantidadDecimalesMaximos(_cpe.sumatoriaISC, 2))
+            else if (!IsValidCantidadDecimalesMaximos(_cpe.sumatoriaISC, 2))
             {
                 _mensajesError.AddMensaje(CodigoError.V0011, "sumatoriaISC");
             }
@@ -458,7 +541,7 @@ namespace GasperSoft.SUNAT
             {
                 _mensajesError.AddMensaje(CodigoError.V0012, "sumatoriaIGV");
             }
-            else if (!Validaciones.IsValidCantidadDecimalesMaximos(_cpe.sumatoriaIGV, 2))
+            else if (!IsValidCantidadDecimalesMaximos(_cpe.sumatoriaIGV, 2))
             {
                 _mensajesError.AddMensaje(CodigoError.V0011, "sumatoriaIGV");
             }
@@ -467,7 +550,7 @@ namespace GasperSoft.SUNAT
             {
                 _mensajesError.AddMensaje(CodigoError.V0012, "sumatoriaOTH");
             }
-            else if (!Validaciones.IsValidCantidadDecimalesMaximos(_cpe.sumatoriaOTH, 2))
+            else if (!IsValidCantidadDecimalesMaximos(_cpe.sumatoriaOTH, 2))
             {
                 _mensajesError.AddMensaje(CodigoError.V0011, "sumatoriaOTH");
             }
@@ -476,7 +559,7 @@ namespace GasperSoft.SUNAT
             {
                 _mensajesError.AddMensaje(CodigoError.V0012, "sumatoriaOtrosCargosNoAfectaBI");
             }
-            else if (!Validaciones.IsValidCantidadDecimalesMaximos(_cpe.sumatoriaOtrosCargosNoAfectaBI, 2))
+            else if (!IsValidCantidadDecimalesMaximos(_cpe.sumatoriaOtrosCargosNoAfectaBI, 2))
             {
                 _mensajesError.AddMensaje(CodigoError.V0011, "sumatoriaOtrosCargosNoAfectaBI");
             }
@@ -485,7 +568,7 @@ namespace GasperSoft.SUNAT
             {
                 _mensajesError.AddMensaje(CodigoError.V0012, "precioVenta");
             }
-            else if (!Validaciones.IsValidCantidadDecimalesMaximos(_cpe.precioVenta, 2))
+            else if (!IsValidCantidadDecimalesMaximos(_cpe.precioVenta, 2))
             {
                 _mensajesError.AddMensaje(CodigoError.V0011, "precioVenta");
             }
@@ -494,7 +577,7 @@ namespace GasperSoft.SUNAT
             {
                 _mensajesError.AddMensaje(CodigoError.V0012, "importeTotal");
             }
-            else if (!Validaciones.IsValidCantidadDecimalesMaximos(_cpe.importeTotal, 2))
+            else if (!IsValidCantidadDecimalesMaximos(_cpe.importeTotal, 2))
             {
                 _mensajesError.AddMensaje(CodigoError.V0011, "importeTotal");
             }
@@ -505,7 +588,7 @@ namespace GasperSoft.SUNAT
                 {
                     _mensajesError.AddMensaje(CodigoError.V0012, "percepcion.tasa");
                 }
-                else if (!Validaciones.IsValidCantidadDecimalesMaximos(_cpe.percepcion.tasa, 2))
+                else if (!IsValidCantidadDecimalesMaximos(_cpe.percepcion.tasa, 2))
                 {
                     _mensajesError.AddMensaje(CodigoError.V0011, "percepcion.tasa");
                 }
@@ -514,7 +597,7 @@ namespace GasperSoft.SUNAT
                 {
                     _mensajesError.AddMensaje(CodigoError.V0012, "percepcion.importe");
                 }
-                else if (!Validaciones.IsValidCantidadDecimalesMaximos(_cpe.percepcion.importe, 2))
+                else if (!IsValidCantidadDecimalesMaximos(_cpe.percepcion.importe, 2))
                 {
                     _mensajesError.AddMensaje(CodigoError.V0011, "percepcion.importe");
                 }
@@ -523,7 +606,7 @@ namespace GasperSoft.SUNAT
                 {
                     _mensajesError.AddMensaje(CodigoError.V0012, "percepcion.montoBase");
                 }
-                else if (!Validaciones.IsValidCantidadDecimalesMaximos(_cpe.percepcion.montoBase, 2))
+                else if (!IsValidCantidadDecimalesMaximos(_cpe.percepcion.montoBase, 2))
                 {
                     _mensajesError.AddMensaje(CodigoError.V0011, "percepcion.montoBase");
                 }
@@ -535,7 +618,7 @@ namespace GasperSoft.SUNAT
                 {
                     _mensajesError.AddMensaje(CodigoError.V0012, "retencion.tasa");
                 }
-                else if (!Validaciones.IsValidCantidadDecimalesMaximos(_cpe.retencion.tasa, 2))
+                else if (!IsValidCantidadDecimalesMaximos(_cpe.retencion.tasa, 2))
                 {
                     _mensajesError.AddMensaje(CodigoError.V0011, "retencion.tasa");
                 }
@@ -544,7 +627,7 @@ namespace GasperSoft.SUNAT
                 {
                     _mensajesError.AddMensaje(CodigoError.V0012, "retencion.importe");
                 }
-                else if (!Validaciones.IsValidCantidadDecimalesMaximos(_cpe.retencion.importe, 2))
+                else if (!IsValidCantidadDecimalesMaximos(_cpe.retencion.importe, 2))
                 {
                     _mensajesError.AddMensaje(CodigoError.V0011, "retencion.importe");
                 }
@@ -553,7 +636,7 @@ namespace GasperSoft.SUNAT
                 {
                     _mensajesError.AddMensaje(CodigoError.V0012, "retencion.montoBase");
                 }
-                else if (!Validaciones.IsValidCantidadDecimalesMaximos(_cpe.retencion.montoBase, 2))
+                else if (!IsValidCantidadDecimalesMaximos(_cpe.retencion.montoBase, 2))
                 {
                     _mensajesError.AddMensaje(CodigoError.V0011, "retencion.montoBase");
                 }
@@ -561,7 +644,7 @@ namespace GasperSoft.SUNAT
 
             if (_cpe.detraccion != null)
             {
-                if (string.IsNullOrEmpty(_cpe.detraccion.numeroCuentaBancoNacion))
+                if (IsNullOrWhiteSpace(_cpe.detraccion.numeroCuentaBancoNacion))
                 {
                     _mensajesError.AddMensaje(CodigoError.S3034, "detraccion.numeroCuentaBancoNacion");
                 }
@@ -575,7 +658,7 @@ namespace GasperSoft.SUNAT
                 {
                     _mensajesError.AddMensaje(CodigoError.V0012, "detraccion.porcentaje");
                 }
-                else if (!Validaciones.IsValidCantidadDecimalesMaximos(_cpe.detraccion.porcentaje, 2))
+                else if (!IsValidCantidadDecimalesMaximos(_cpe.detraccion.porcentaje, 2))
                 {
                     _mensajesError.AddMensaje(CodigoError.V0011, "detraccion.porcentaje");
                 }
@@ -584,7 +667,7 @@ namespace GasperSoft.SUNAT
                 {
                     _mensajesError.AddMensaje(CodigoError.V0012, "detraccion.importe");
                 }
-                else if (!Validaciones.IsValidCantidadDecimalesMaximos(_cpe.detraccion.importe, 2))
+                else if (!IsValidCantidadDecimalesMaximos(_cpe.detraccion.importe, 2))
                 {
                     _mensajesError.AddMensaje(CodigoError.V0011, "detraccion.importe");
                 }
@@ -593,35 +676,10 @@ namespace GasperSoft.SUNAT
             #endregion
 
             //Aqui si ya muchos erros no continuamos y notificamos al usuario
-            if (_mensajesError.Count > 0)
+            if (GetTotalErrores(_mensajesError) > 0)
             {
                 return false;
             }
-
-            #region Obligatorio informar datos del cliente cuando la factura supera los 700 soles
-
-            if (_cpe.serie.StartsWith("F"))
-            {
-                //El codigo 0401 en tipo de operacion deberia poder emitir facturas con sujetos no domiciliado
-                if (!_esExportacion && _cpe.codigoTipoOperacion != "0401" && _cpe.adquirente.tipoDocumentoIdentificacion != "6" && _cpe.adquirente.tipoDocumentoIdentificacion != "1")
-                {
-                    _mensajesError.AddMensaje(CodigoError.V0025, "adquirente.tipoDocumentoIdentificacion");
-                    return false;
-                }
-            }
-            else
-            {
-                if (ConvertirMonedaNacional(_cpe.codMoneda, _cpe.importeTotal, _tipoCambioReferencial) >= _montoMaximoClienteAnonimoBoleta)
-                {
-                    if (_cpe.adquirente.tipoDocumentoIdentificacion == "-" || _cpe.adquirente.numeroDocumentoIdentificacion == "-")
-                    {
-                        _mensajesError.AddMensaje(CodigoError.V0008);
-                        return false;
-                    }
-                }
-            }
-
-            #endregion
 
             #endregion
 
@@ -653,25 +711,25 @@ namespace GasperSoft.SUNAT
 
                     foreach (var item in _cpe.motivosNota)
                     {
-                        if (!Validaciones.IsValidSeries(item.tipoDocumento, item.serie))
-                        {
-                            _mensajesError.AddMensaje(CodigoError.V0015, $"motivosNota[{indexMotivoNota}].serie = '{item.serie}' no valido para motivosNota[{indexMotivoNota}].tipoDocumento = '{item.tipoDocumento}' ");
-                            continue;
-                        }
-
-                        if (item.serie.StartsWith("F") || item.serie.StartsWith("B"))
-                        {
-                            if (_cpe.serie[0] != item.serie[0])
-                            {
-                                _mensajesError.AddMensaje(CodigoError.V0016);
-                                continue;
-                            }
-                        }
-
                         #region Validaciones Nota de Credito 
 
                         if (_cpe.tipoDocumento == "07")
                         {
+                            if (!IsValidSeries(item.tipoDocumento, item.serie))
+                            {
+                                _mensajesError.AddMensaje(CodigoError.V0015, $"motivosNota[{indexMotivoNota}].serie = '{item.serie}' no valido para motivosNota[{indexMotivoNota}].tipoDocumento = '{item.tipoDocumento}' ");
+                                continue;
+                            }
+
+                            if (item.serie.StartsWith("F") || item.serie.StartsWith("B"))
+                            {
+                                if (_cpe.serie[0] != item.serie[0])
+                                {
+                                    _mensajesError.AddMensaje(CodigoError.V0016);
+                                    continue;
+                                }
+                            }
+
                             //Validar el motivo de la nota de credito con el catalogo N° 09
                             if (!OnValidarCatalogoSunat("09", item.tipoNota))
                             {
@@ -724,6 +782,21 @@ namespace GasperSoft.SUNAT
                                 //Si no se trata de una nota de debito por penalidad entonces debe haber un tipo de documento de referencia valido
                                 if (item.tipoNota != "03")
                                 {
+                                    if (!IsValidSeries(item.tipoDocumento, item.serie))
+                                    {
+                                        _mensajesError.AddMensaje(CodigoError.V0015, $"motivosNota[{indexMotivoNota}].serie = '{item.serie}' no valido para motivosNota[{indexMotivoNota}].tipoDocumento = '{item.tipoDocumento}' ");
+                                        continue;
+                                    }
+
+                                    if (item.serie.StartsWith("F") || item.serie.StartsWith("B"))
+                                    {
+                                        if (_cpe.serie[0] != item.serie[0])
+                                        {
+                                            _mensajesError.AddMensaje(CodigoError.V0016);
+                                            continue;
+                                        }
+                                    }
+
                                     if (item.tipoDocumento != "01" && item.tipoDocumento != "03" && item.tipoDocumento != "12")
                                     {
                                         _mensajesError.AddMensaje(CodigoError.V0014, $"motivosNota[{indexMotivoNota}].tipoDocumento");
@@ -735,7 +808,7 @@ namespace GasperSoft.SUNAT
                         #endregion
 
                         //Si o si se debe tener un sustento
-                        if (!Validaciones.IsValidTextSunat(item.sustento, 1, 500))
+                        if (!IsValidTextSunat(item.sustento, 1, 500))
                         {
                             _mensajesError.AddMensaje(CodigoError.V0003, $"motivosNota[{indexMotivoNota}].sustento");
                         }
@@ -786,7 +859,7 @@ namespace GasperSoft.SUNAT
             }
 
             //No continuamos si existen errores
-            if (_mensajesError.Count > 0)
+            if (GetTotalErrores(_mensajesError) > 0)
             {
                 return false;
             }
@@ -813,27 +886,25 @@ namespace GasperSoft.SUNAT
                     _detalleGratuito = true;
                 }
 
-                if (!string.IsNullOrWhiteSpace(item.codigoProducto))
+                if (!IsNullOrWhiteSpace(item.codigoProducto))
                 {
-                    if (!Validaciones.IsValidCodigoProducto(item.codigoProducto))
+                    if (!IsValidCodigoProducto(item.codigoProducto))
                     {
                         _mensajesError.AddMensaje(CodigoError.S4269, $"detalle[{_idRecord}].codigoProducto = '{item.codigoProducto}'");
                     }
                 }
 
-                if (!string.IsNullOrEmpty(item.codigoProductoGS1))
+                if (!IsNullOrWhiteSpace(item.codigoProductoGS1))
                 {
-                    if (!string.IsNullOrWhiteSpace(item.tipoCodigoProductoGS1))
+                    if (!IsNullOrWhiteSpace(item.tipoCodigoProductoGS1))
                     {
-                        var _tipoCodigoProductoGS1Permitidos = new List<string> { "GTIN-8", "GTIN-12", "GTIN-13", "GTIN-14" };
-
-                        if (!_tipoCodigoProductoGS1Permitidos.Contains(item.tipoCodigoProductoGS1))
+                        if (!(new List<string> { "GTIN-8", "GTIN-12", "GTIN-13", "GTIN-14" }).Contains(item.tipoCodigoProductoGS1))
                         {
                             _mensajesError.AddMensaje(CodigoError.S4335, $"detalle[{_idRecord}].tipoCodigoProductoGS1 = '{item.tipoCodigoProductoGS1}', solo se permite 'GTIN-8', 'GTIN-12', 'GTIN-13' y 'GTIN-14'");
                         }
                         else
                         {
-                            if (!Validaciones.IsValidCodigoProductoGS1(item.tipoCodigoProductoGS1, item.codigoProductoGS1))
+                            if (!IsValidCodigoProductoGS1(item.tipoCodigoProductoGS1, item.codigoProductoGS1))
                             {
                                 _mensajesError.AddMensaje(CodigoError.S4334, $"detalle[{_idRecord}].codigoProductoGS1 = '{item.codigoProductoGS1}'");
                             }
@@ -845,7 +916,7 @@ namespace GasperSoft.SUNAT
                     }
                 }
 
-                if (!string.IsNullOrWhiteSpace(item.codigoProductoSunat))
+                if (!IsNullOrWhiteSpace(item.codigoProductoSunat))
                 {
                     //Validar que codigoProductoSunat se encuentre en el catálogo N° 25
                     if (!OnValidarCatalogoSunat("25", item.codigoProductoSunat))
@@ -875,7 +946,7 @@ namespace GasperSoft.SUNAT
 
                 #region descripcion
 
-                if (!Validaciones.IsValidTextSunat(item.nombre, 1, 500))
+                if (!IsValidTextSunat(item.nombre, 1, 500))
                 {
                     _mensajesError.AddMensaje(CodigoError.V0003, $"detalle[{_idRecord}].nombre");
                 }
@@ -936,7 +1007,7 @@ namespace GasperSoft.SUNAT
                     _mensajesError.AddMensaje(CodigoError.V0012, $"detalle[{_idRecord}].cantidad");
                     _valorCalculoValidado = false;
                 }
-                else if (!Validaciones.IsValidCantidadDecimalesMaximos(item.cantidad, 10))
+                else if (!IsValidCantidadDecimalesMaximos(item.cantidad, 10))
                 {
                     _mensajesError.AddMensaje(CodigoError.V0011, $"detalle[{_idRecord}].cantidad");
                     _valorCalculoValidado = false;
@@ -947,7 +1018,7 @@ namespace GasperSoft.SUNAT
                     _mensajesError.AddMensaje(CodigoError.V0012, $"detalle[{_idRecord}].valorVentaUnitario");
                     _valorCalculoValidado = false;
                 }
-                else if (!Validaciones.IsValidCantidadDecimalesMaximos(item.valorVentaUnitario, 10))
+                else if (!IsValidCantidadDecimalesMaximos(item.valorVentaUnitario, 10))
                 {
                     _mensajesError.AddMensaje(CodigoError.V0011, $"detalle[{_idRecord}].valorVentaUnitario");
                     _valorCalculoValidado = false;
@@ -958,7 +1029,7 @@ namespace GasperSoft.SUNAT
                     _mensajesError.AddMensaje(CodigoError.V0012, $"detalle[{_idRecord}].precioVentaUnitario");
                     _valorCalculoValidado = false;
                 }
-                else if (!Validaciones.IsValidCantidadDecimalesMaximos(item.precioVentaUnitario, 10))
+                else if (!IsValidCantidadDecimalesMaximos(item.precioVentaUnitario, 10))
                 {
                     _mensajesError.AddMensaje(CodigoError.V0011, $"detalle[{_idRecord}].precioVentaUnitario");
                     _valorCalculoValidado = false;
@@ -977,7 +1048,7 @@ namespace GasperSoft.SUNAT
                             _mensajesError.AddMensaje(CodigoError.V0012, $"detalle[{_idRecord}].descuento.tasa");
                             _valorCalculoValidado = false;
                         }
-                        else if (!Validaciones.IsValidCantidadDecimalesMaximos(item.descuento.tasa, 5))
+                        else if (!IsValidCantidadDecimalesMaximos(item.descuento.tasa, 5))
                         {
                             _mensajesError.AddMensaje(CodigoError.V0011, $"detalle[{_idRecord}].descuento.tasa");
                             _valorCalculoValidado = false;
@@ -988,7 +1059,7 @@ namespace GasperSoft.SUNAT
                             _mensajesError.AddMensaje(CodigoError.V0012, $"detalle[{_idRecord}].descuento.montoBase");
                             _valorCalculoValidado = false;
                         }
-                        else if (!Validaciones.IsValidCantidadDecimalesMaximos(item.descuento.montoBase, 2))
+                        else if (!IsValidCantidadDecimalesMaximos(item.descuento.montoBase, 2))
                         {
                             _mensajesError.AddMensaje(CodigoError.V0011, $"detalle[{_idRecord}].descuento.montoBase");
                             _valorCalculoValidado = false;
@@ -999,7 +1070,7 @@ namespace GasperSoft.SUNAT
                             _mensajesError.AddMensaje(CodigoError.V0012, $"detalle[{_idRecord}].descuento.importe");
                             _valorCalculoValidado = false;
                         }
-                        else if (!Validaciones.IsValidCantidadDecimalesMaximos(item.descuento.importe, 2))
+                        else if (!IsValidCantidadDecimalesMaximos(item.descuento.importe, 2))
                         {
                             _mensajesError.AddMensaje(CodigoError.V0011, $"detalle[{_idRecord}].descuento.importe");
                             _valorCalculoValidado = false;
@@ -1020,7 +1091,7 @@ namespace GasperSoft.SUNAT
                             _mensajesError.AddMensaje(CodigoError.V0012, $"detalle[{_idRecord}].descuentoNoAfectaBI.tasa");
                             _valorCalculoValidado = false;
                         }
-                        else if (!Validaciones.IsValidCantidadDecimalesMaximos(item.descuentoNoAfectaBI.tasa, 5))
+                        else if (!IsValidCantidadDecimalesMaximos(item.descuentoNoAfectaBI.tasa, 5))
                         {
                             _mensajesError.AddMensaje(CodigoError.V0011, $"detalle[{_idRecord}].descuentoNoAfectaBI.tasa");
                             _valorCalculoValidado = false;
@@ -1031,7 +1102,7 @@ namespace GasperSoft.SUNAT
                             _mensajesError.AddMensaje(CodigoError.V0012, $"detalle[{_idRecord}].descuentoNoAfectaBI.montoBase");
                             _valorCalculoValidado = false;
                         }
-                        else if (!Validaciones.IsValidCantidadDecimalesMaximos(item.descuentoNoAfectaBI.montoBase, 2))
+                        else if (!IsValidCantidadDecimalesMaximos(item.descuentoNoAfectaBI.montoBase, 2))
                         {
                             _mensajesError.AddMensaje(CodigoError.V0011, $"detalle[{_idRecord}].descuentoNoAfectaBI.montoBase");
                             _valorCalculoValidado = false;
@@ -1042,7 +1113,7 @@ namespace GasperSoft.SUNAT
                             _mensajesError.AddMensaje(CodigoError.V0012, $"detalle[{_idRecord}].descuentoNoAfectaBI.importe");
                             _valorCalculoValidado = false;
                         }
-                        else if (!Validaciones.IsValidCantidadDecimalesMaximos(item.descuentoNoAfectaBI.importe, 2))
+                        else if (!IsValidCantidadDecimalesMaximos(item.descuentoNoAfectaBI.importe, 2))
                         {
                             _mensajesError.AddMensaje(CodigoError.V0011, $"detalle[{_idRecord}].descuentoNoAfectaBI.importe");
                             _valorCalculoValidado = false;
@@ -1055,7 +1126,7 @@ namespace GasperSoft.SUNAT
                     _mensajesError.AddMensaje(CodigoError.V0012, $"detalle[{_idRecord}] 'valorVenta'");
                     _valorCalculoValidado = false;
                 }
-                else if (!Validaciones.IsValidCantidadDecimalesMaximos(item.valorVenta, 2))
+                else if (!IsValidCantidadDecimalesMaximos(item.valorVenta, 2))
                 {
                     _mensajesError.AddMensaje(CodigoError.V0011, $"detalle[{_idRecord}] 'valorVenta'");
                     _valorCalculoValidado = false;
@@ -1066,7 +1137,7 @@ namespace GasperSoft.SUNAT
                     _mensajesError.AddMensaje(CodigoError.V0012, $"detalle[{_idRecord}] 'montoIGV'");
                     _valorCalculoValidado = false;
                 }
-                else if (!Validaciones.IsValidCantidadDecimalesMaximos(item.montoIGV, 2))
+                else if (!IsValidCantidadDecimalesMaximos(item.montoIGV, 2))
                 {
                     _mensajesError.AddMensaje(CodigoError.V0011, $"detalle[{_idRecord}] 'montoIGV'");
                     _valorCalculoValidado = false;
@@ -1077,7 +1148,7 @@ namespace GasperSoft.SUNAT
                     _mensajesError.AddMensaje(CodigoError.V0012, $"detalle[{_idRecord}] 'tasaIGV'");
                     _valorCalculoValidado = false;
                 }
-                else if (!Validaciones.IsValidCantidadDecimalesMaximos(item.tasaIGV, 2))
+                else if (!IsValidCantidadDecimalesMaximos(item.tasaIGV, 2))
                 {
                     _mensajesError.AddMensaje(CodigoError.V0011, $"detalle[{_idRecord}] 'tasaIGV'");
                     _valorCalculoValidado = false;
@@ -1088,7 +1159,7 @@ namespace GasperSoft.SUNAT
                     _mensajesError.AddMensaje(CodigoError.V0012, $"detalle[{_idRecord}] 'montoISC'");
                     _valorCalculoValidado = false;
                 }
-                else if (!Validaciones.IsValidCantidadDecimalesMaximos(item.montoISC, 2))
+                else if (!IsValidCantidadDecimalesMaximos(item.montoISC, 2))
                 {
                     _mensajesError.AddMensaje(CodigoError.V0011, $"detalle[{_idRecord}] 'montoISC'");
                     _valorCalculoValidado = false;
@@ -1099,7 +1170,7 @@ namespace GasperSoft.SUNAT
                     _mensajesError.AddMensaje(CodigoError.V0012, $"detalle[{_idRecord}] 'montoISC'");
                     _valorCalculoValidado = false;
                 }
-                else if (!Validaciones.IsValidCantidadDecimalesMaximos(item.tasaISC, 2))
+                else if (!IsValidCantidadDecimalesMaximos(item.tasaISC, 2))
                 {
                     _mensajesError.AddMensaje(CodigoError.V0011, $"detalle[{_idRecord}] 'montoISC'");
                     _valorCalculoValidado = false;
@@ -1166,7 +1237,7 @@ namespace GasperSoft.SUNAT
 
                         var _montoISCCalculado = item.montoBaseISC * item.tasaISC / 100;
 
-                        if (!Validaciones.ValidarToleranciaCalculo(item.montoISC, decimal.Round(_montoISCCalculado, 2), _toleranciaCalculo))
+                        if (!ValidarToleranciaCalculo(item.montoISC, decimal.Round(_montoISCCalculado, 2), _toleranciaCalculo))
                         {
                             _mensajesError.AddMensaje(CodigoError.V2000, $"montoISC incorrecto en la linea {_idRecord}, Valor enviado: {item.montoISC} Valor calculado: {decimal.Round(_montoISCCalculado, 2)}; Formula: montoISC = montoBaseISC * tasaISC / 100");
                             continue;
@@ -1221,7 +1292,7 @@ namespace GasperSoft.SUNAT
 
                                 var _montoBaseDescuentoCalculado = item.valorVentaUnitario * item.cantidad;
 
-                                if (!Validaciones.ValidarToleranciaCalculo(item.descuento.montoBase, decimal.Round(_montoBaseDescuentoCalculado, 2), _toleranciaCalculo))
+                                if (!ValidarToleranciaCalculo(item.descuento.montoBase, decimal.Round(_montoBaseDescuentoCalculado, 2), _toleranciaCalculo))
                                 {
                                     _mensajesError.AddMensaje(CodigoError.V2000, $"descuento.montoBase incorrecto en la linea {_idRecord}, Valor enviado: {item.descuento.montoBase} Valor calculado: {decimal.Round(_montoBaseDescuentoCalculado, 2)}; Formula: descuento.montoBase = valorVentaUnitario * cantidad");
                                     continue;
@@ -1231,7 +1302,7 @@ namespace GasperSoft.SUNAT
                             {
                                 var _montoBaseDescuentoCalculado = item.precioVentaUnitario * item.cantidad;
 
-                                if (!Validaciones.ValidarToleranciaCalculo(item.descuento.montoBase, decimal.Round(_montoBaseDescuentoCalculado, 2), _toleranciaCalculo))
+                                if (!ValidarToleranciaCalculo(item.descuento.montoBase, decimal.Round(_montoBaseDescuentoCalculado, 2), _toleranciaCalculo))
                                 {
                                     _mensajesError.AddMensaje(CodigoError.V2000, $"descuento.montoBase incorrecto en la linea {_idRecord}, Valor enviado: {item.descuento.montoBase} Valor calculado: {decimal.Round(_montoBaseDescuentoCalculado, 2)}; Formula(Gratuitas): descuento.montoBase = precioVentaUnitario * cantidad");
                                     continue;
@@ -1240,7 +1311,7 @@ namespace GasperSoft.SUNAT
 
                             var _descuentoCalculado = item.descuento.montoBase * item.descuento.tasa;
 
-                            if (!Validaciones.ValidarToleranciaCalculo(item.descuento.importe, decimal.Round(_descuentoCalculado, 2), _toleranciaCalculo))
+                            if (!ValidarToleranciaCalculo(item.descuento.importe, decimal.Round(_descuentoCalculado, 2), _toleranciaCalculo))
                             {
                                 _mensajesError.AddMensaje(CodigoError.V2000, $"descuento.importe incorrecto en la linea {_idRecord}, Valor enviado: {item.descuento.importe} Valor calculado: {decimal.Round(_descuentoCalculado, 2)}; Formula: descuento.importe = descuento.montoBase * descuento.tasa");
                                 continue;
@@ -1258,7 +1329,7 @@ namespace GasperSoft.SUNAT
                             _valorVentaItemCalculado -= item.descuento.importe;
                         }
 
-                        if (!Validaciones.ValidarToleranciaCalculo(item.valorVenta, decimal.Round(_valorVentaItemCalculado, 2), _toleranciaCalculo))
+                        if (!ValidarToleranciaCalculo(item.valorVenta, decimal.Round(_valorVentaItemCalculado, 2), _toleranciaCalculo))
                         {
                             _mensajesError.AddMensaje(CodigoError.V2000, $"valorVenta incorrecto en la linea {_idRecord}, Valor enviado: {item.valorVenta} Valor calculado: {decimal.Round(_valorVentaItemCalculado, 2)}; Formula: valorVenta = valorVentaUnitario * cantidad - descuento.importe");
                             continue;
@@ -1269,7 +1340,7 @@ namespace GasperSoft.SUNAT
                             decimal _montoOtrosCargosNoAfectaBICalculado = 0;
                             _montoOtrosCargosNoAfectaBICalculado = item.otrosCargosNoAfectaBI.montoBase * item.otrosCargosNoAfectaBI.tasa;
 
-                            if (!Validaciones.ValidarToleranciaCalculo(item.otrosCargosNoAfectaBI.importe, decimal.Round(_montoOtrosCargosNoAfectaBICalculado, 2), _toleranciaCalculo))
+                            if (!ValidarToleranciaCalculo(item.otrosCargosNoAfectaBI.importe, decimal.Round(_montoOtrosCargosNoAfectaBICalculado, 2), _toleranciaCalculo))
                             {
                                 _mensajesError.AddMensaje(CodigoError.V2000, $"otrosCargosNoAfectaBI.importe incorrecto en la linea {_idRecord}, Valor enviado: {item.otrosCargosNoAfectaBI.importe} Valor calculado: {decimal.Round(_montoOtrosCargosNoAfectaBICalculado, 2)}; Formula: otrosCargosNoAfectaBI.importe = otrosCargosNoAfectaBI.montoBase * otrosCargosNoAfectaBI.tasa");
                                 continue;
@@ -1291,7 +1362,7 @@ namespace GasperSoft.SUNAT
                             _valorVentaItemCalculado -= item.descuento.importe;
                         }
 
-                        if (!Validaciones.ValidarToleranciaCalculo(item.valorVenta, decimal.Round(_valorVentaItemCalculado, 2), _toleranciaCalculo))
+                        if (!ValidarToleranciaCalculo(item.valorVenta, decimal.Round(_valorVentaItemCalculado, 2), _toleranciaCalculo))
                         {
                             _mensajesError.AddMensaje(CodigoError.V2000, $"valorVenta incorrecto en la linea {_idRecord}, Valor enviado: {item.valorVenta} Valor calculado: {decimal.Round(_valorVentaItemCalculado, 2)}; Formula(Gratuitas): valorVenta = precioVentaUnitario * cantidad - descuento.importe");
                             continue;
@@ -1300,7 +1371,7 @@ namespace GasperSoft.SUNAT
 
                     var _montoBaseIGVCalculado = item.valorVenta + item.montoISC;
 
-                    if (!Validaciones.ValidarToleranciaCalculo(item.montoBaseIGV, decimal.Round(_montoBaseIGVCalculado, 2), _toleranciaCalculo))
+                    if (!ValidarToleranciaCalculo(item.montoBaseIGV, decimal.Round(_montoBaseIGVCalculado, 2), _toleranciaCalculo))
                     {
                         _mensajesError.AddMensaje(CodigoError.V2000, $"montoBaseIGV incorrecto en la linea {_idRecord}, Valor enviado: {item.montoBaseIGV} Valor calculado: {decimal.Round(_montoBaseIGVCalculado, 2)}; Formula: montoBaseIGV = valorVenta + montoISC");
                         continue;
@@ -1311,7 +1382,7 @@ namespace GasperSoft.SUNAT
                     {
                         var _montoIGVCalculado = item.montoBaseIGV * item.tasaIGV / 100;
 
-                        if (!Validaciones.ValidarToleranciaCalculo(item.montoIGV, decimal.Round(_montoIGVCalculado, 2), _toleranciaCalculo))
+                        if (!ValidarToleranciaCalculo(item.montoIGV, decimal.Round(_montoIGVCalculado, 2), _toleranciaCalculo))
                         {
                             _mensajesError.AddMensaje(CodigoError.V2000, $"montoIGV incorrecto en la linea {_idRecord}, Valor enviado: {item.montoIGV} Valor calculado: {decimal.Round(_montoIGVCalculado, 2)}; Formula: montoIGV = montoBaseIGV * tasaIGV / 100");
                             continue;
@@ -1320,7 +1391,7 @@ namespace GasperSoft.SUNAT
 
                     var _montoICBPERCalculado = (int)item.cantidad * item.tasaUnitariaICBPER;
 
-                    if (!Validaciones.ValidarToleranciaCalculo(item.montoICBPER, decimal.Round(_montoICBPERCalculado, 2), _toleranciaCalculo))
+                    if (!ValidarToleranciaCalculo(item.montoICBPER, decimal.Round(_montoICBPERCalculado, 2), _toleranciaCalculo))
                     {
                         _mensajesError.AddMensaje(CodigoError.V2000, $"montoICBPER incorrecto en la linea {_idRecord}, Valor enviado: {item.montoICBPER} Valor calculado: {decimal.Round(_montoICBPERCalculado, 2)}; Formula: montoICBPER = cantidad * tasaUnitariaICBPER");
                         continue;
@@ -1333,7 +1404,7 @@ namespace GasperSoft.SUNAT
                         _sumatoriaImpuestosItemCalculado += item.montoIGV;
                     }
 
-                    if (!Validaciones.ValidarToleranciaCalculo(item.sumatoriaImpuestos, decimal.Round(_sumatoriaImpuestosItemCalculado, 2), _toleranciaCalculo))
+                    if (!ValidarToleranciaCalculo(item.sumatoriaImpuestos, decimal.Round(_sumatoriaImpuestosItemCalculado, 2), _toleranciaCalculo))
                     {
                         _mensajesError.AddMensaje(CodigoError.V2000, $"sumatoriaImpuestos incorrecto en la linea {_idRecord}, Valor enviado: {item.sumatoriaImpuestos} Valor calculado: {decimal.Round(_sumatoriaImpuestosItemCalculado, 2)}; Formula: sumatoriaImpuestos = montoIGV(cuando codAfectacionIGV='10') + montoISC + montoOTH + montoICBPER");
                         continue;
@@ -1356,7 +1427,7 @@ namespace GasperSoft.SUNAT
                         //Codigo de validacion 3270
                         var _precioVentaUnitarioCalculado = _precioVentaItemCalculado / item.cantidad;
 
-                        if (!Validaciones.ValidarToleranciaCalculo(item.precioVentaUnitario, decimal.Round(_precioVentaUnitarioCalculado, 10), _toleranciaCalculo))
+                        if (!ValidarToleranciaCalculo(item.precioVentaUnitario, decimal.Round(_precioVentaUnitarioCalculado, 10), _toleranciaCalculo))
                         {
                             _mensajesError.AddMensaje(CodigoError.V2000, $"precioVentaUnitario incorrecto en la linea {_idRecord}, Valor enviado: {item.precioVentaUnitario} Valor calculado: {decimal.Round(_precioVentaUnitarioCalculado, 10)}; Formula: precioVentaUnitario = (valorVenta + sumatoriaImpuestos + otrosCargosNoAfectaBI.importe - descuentoNoAfectaBI.importe) / cantidad");
                         }
@@ -1443,7 +1514,7 @@ namespace GasperSoft.SUNAT
             }
 
             //Existe algun error en los detalles entonces ya no continuamos
-            if (_mensajesError.Count > 0)
+            if (GetTotalErrores(_mensajesError) > 0)
             {
                 return false;
             }
@@ -1489,6 +1560,7 @@ namespace GasperSoft.SUNAT
             decimal _totalDescuentosNOAfectaBICalculado = _descuentosxLineaNOAfectaBI + _descuentosGlobalesNOAfectaBI;
 
             decimal _operacionesGravadasxLinea = _cpe.detalles.Where(x => x.codAfectacionIGV == "10").Sum(x => x.valorVenta);
+            decimal _iscGravadasxLina = _cpe.detalles.Where(x => x.codAfectacionIGV == "10").Sum(x => x.montoISC);
             decimal _descuentoGlobalAfectaBICalculado = decimal.Round(_operacionesGravadasxLinea * _cpe.tasaDescuentoGlobal, 2);
             decimal _totalOperacionesGravadasCalculado = _operacionesGravadasxLinea - _descuentoGlobalAfectaBICalculado - _totalAnticiposGravados;
 
@@ -1541,7 +1613,8 @@ namespace GasperSoft.SUNAT
             }
 
             //Codigo de validacion 3279
-            decimal _precioVentaCalculado = _valorVentaCalculado + _sumatoriaICBPERCalculado + _sumatoriaISCCalculado + _totalAnticiposISC + _sumatoriaOTHCalculado + _sumatoriaIGVCalculado;
+            decimal _precioVentaCalculado = _valorVentaCalculado + _sumatoriaICBPERCalculado + _sumatoriaISCCalculado + _totalAnticiposISC + _sumatoriaOTHCalculado + ((_operacionesGravadasxLinea - _descuentoGlobalAfectaBICalculado + _iscGravadasxLina) * _tasaIGVOperacionesGravadas / 100);
+
             decimal _totalAnticiposCalculado = Convert.ToDecimal(_cpe.anticipos?.Sum(x => x.importeTotal));
             decimal _totalRedondeo = _cpe.totalRedondeo;
             decimal _importeTotalCalculado = _precioVentaCalculado + _sumatoriaOtrosCargosNoAfectaBICalculado - _totalDescuentosNOAfectaBICalculado - _totalAnticiposCalculado + _totalRedondeo;
@@ -1557,12 +1630,12 @@ namespace GasperSoft.SUNAT
             {
                 if (_cpe.descuentoGlobalAfectaBI != null)
                 {
-                    if (!Validaciones.ValidarToleranciaCalculo(_cpe.descuentoGlobalAfectaBI.montoBase, decimal.Round(_operacionesGravadasxLinea, 2), _toleranciaCalculo))
+                    if (!ValidarToleranciaCalculo(_cpe.descuentoGlobalAfectaBI.montoBase, decimal.Round(_operacionesGravadasxLinea, 2), _toleranciaCalculo))
                     {
                         _mensajesError.AddMensaje(CodigoError.V2000, $"descuentoGlobalAfectaBI.montoBase incorrecto Valor enviado: {_cpe.descuentoGlobalAfectaBI.montoBase} Valor calculado: {decimal.Round(_operacionesGravadasxLinea, 2)}; Formula: descuentoGlobalAfectaBI.montoBase = Suma del 'valorVenta' de cada detalle que tenga 'codAfectacionIGV' = '10'");
                         _validacionOk = false;
                     }
-                    else if (!Validaciones.ValidarToleranciaCalculo(_cpe.descuentoGlobalAfectaBI.importe, decimal.Round(_descuentoGlobalAfectaBICalculado, 2), _toleranciaCalculo))
+                    else if (!ValidarToleranciaCalculo(_cpe.descuentoGlobalAfectaBI.importe, decimal.Round(_descuentoGlobalAfectaBICalculado, 2), _toleranciaCalculo))
                     {
                         _mensajesError.AddMensaje(CodigoError.V2000, $"descuentoGlobalAfectaBI.importe incorrecto Valor enviado: {_cpe.descuentoGlobalAfectaBI.importe} Valor calculado: {decimal.Round(_descuentoGlobalAfectaBICalculado, 2)}; Formula: descuentoGlobalAfectaBI.importe = descuentoGlobalAfectaBI.montoBase * tasaDescuentoGlobal");
                         _validacionOk = false;
@@ -1580,7 +1653,7 @@ namespace GasperSoft.SUNAT
 
             if (_validacionOk)
             {
-                if (!Validaciones.ValidarToleranciaCalculo(_cpe.totalOperacionesGravadas, decimal.Round(_totalOperacionesGravadasCalculado, 2), _toleranciaCalculo))
+                if (!ValidarToleranciaCalculo(_cpe.totalOperacionesGravadas, decimal.Round(_totalOperacionesGravadasCalculado, 2), _toleranciaCalculo))
                 {
                     _mensajesError.AddMensaje(CodigoError.V2000, $"totalOperacionesGravadas incorrecto Valor enviado: {_cpe.totalOperacionesGravadas} Valor calculado: {decimal.Round(_totalOperacionesGravadasCalculado, 2)}; Formula: totalOperacionesGravadas = (Suma del 'valorVenta' de cada detalle que tenga 'codAfectacionIGV' = '10') - descuentoGlobalAfectaBI.importe - (Suma de 'totalOperacionesGravadas' de cada anticipo)");
                 }
@@ -1590,7 +1663,7 @@ namespace GasperSoft.SUNAT
 
             #region Validar Operaciones Exoneradas
 
-            if (!Validaciones.ValidarToleranciaCalculo(_cpe.totalOperacionesExoneradas, decimal.Round(_totalOperacionesExoneradasCalculado, 2), _toleranciaCalculo))
+            if (!ValidarToleranciaCalculo(_cpe.totalOperacionesExoneradas, decimal.Round(_totalOperacionesExoneradasCalculado, 2), _toleranciaCalculo))
             {
                 _mensajesError.AddMensaje(CodigoError.V2000, $"totalOperacionesExoneradas incorrecto Valor enviado: {_cpe.totalOperacionesExoneradas} Valor calculado: {decimal.Round(_totalOperacionesExoneradasCalculado, 2)}; Formula: totalOperacionesExoneradas = (Suma del 'valorVenta' de cada detalle que tenga 'codAfectacionIGV' = '20') - (Suma de 'totalOperacionesExoneradas' de cada anticipo)");
             }
@@ -1599,7 +1672,7 @@ namespace GasperSoft.SUNAT
 
             #region Validar Operaciones Inafectas
 
-            if (!Validaciones.ValidarToleranciaCalculo(_cpe.totalOperacionesInafectas, decimal.Round(_totalOperacionesInafectasCalculado, 2), _toleranciaCalculo))
+            if (!ValidarToleranciaCalculo(_cpe.totalOperacionesInafectas, decimal.Round(_totalOperacionesInafectasCalculado, 2), _toleranciaCalculo))
             {
                 _mensajesError.AddMensaje(CodigoError.V2000, $"totalOperacionesInafectas incorrecto Valor enviado: {_cpe.totalOperacionesInafectas} Valor calculado: {decimal.Round(_totalOperacionesInafectasCalculado, 2)}; Formula: totalOperacionesInafectas = (Suma del 'valorVenta' de cada detalle que tenga 'codAfectacionIGV' = '30') - (Suma de 'totalOperacionesInafectas' de cada anticipo)");
             }
@@ -1608,7 +1681,7 @@ namespace GasperSoft.SUNAT
 
             #region Validar Operaciones Exportacion
 
-            if (!Validaciones.ValidarToleranciaCalculo(_cpe.totalOperacionesExportacion, decimal.Round(_totalOperacionesExportacionCalculado, 2), _toleranciaCalculo))
+            if (!ValidarToleranciaCalculo(_cpe.totalOperacionesExportacion, decimal.Round(_totalOperacionesExportacionCalculado, 2), _toleranciaCalculo))
             {
                 _mensajesError.AddMensaje(CodigoError.V2000, $"totalOperacionesExportacion incorrecto Valor enviado: {_cpe.totalOperacionesExportacion} Valor calculado: {decimal.Round(_totalOperacionesExportacionCalculado, 2)}; Formula: totalOperacionesExportacion = (Suma del 'valorVenta' de cada detalle que tenga 'codAfectacionIGV' = '40') - (Suma de 'totalOperacionesInafectas' de cada anticipo)");
             }
@@ -1627,13 +1700,13 @@ namespace GasperSoft.SUNAT
                 {
                     var _descuentoGlobalNoAfectaBICalculado = _montoBaseDescuentoGlobalNoAfectaBICalculado * _cpe.tasaDescuentoGlobal;
 
-                    if (!Validaciones.ValidarToleranciaCalculo(_cpe.descuentoGlobalNoAfectaBI.montoBase, decimal.Round(_montoBaseDescuentoGlobalNoAfectaBICalculado, 2), _toleranciaCalculo))
+                    if (!ValidarToleranciaCalculo(_cpe.descuentoGlobalNoAfectaBI.montoBase, decimal.Round(_montoBaseDescuentoGlobalNoAfectaBICalculado, 2), _toleranciaCalculo))
                     {
                         _mensajesError.AddMensaje(CodigoError.V2000, $"descuentoGlobalNoAfectaBI.montoBase incorrecto Valor enviado: {_cpe.descuentoGlobalNoAfectaBI.montoBase} Valor calculado: {decimal.Round(_montoBaseDescuentoGlobalNoAfectaBICalculado, 2)}; Formula: descuentoGlobalNoAfectaBI.montoBase = (Suma del 'valorVenta' de cada detalle que tenga 'codAfectacionIGV' = '20','30'´ ó '40') + (Suma del 'montoOtrosCargosNoAfectaBI' de cada detalle)");
                     }
                     else
                     {
-                        if (!Validaciones.ValidarToleranciaCalculo(_cpe.descuentoGlobalNoAfectaBI.importe, decimal.Round(_descuentoGlobalNoAfectaBICalculado, 2), _toleranciaCalculo))
+                        if (!ValidarToleranciaCalculo(_cpe.descuentoGlobalNoAfectaBI.importe, decimal.Round(_descuentoGlobalNoAfectaBICalculado, 2), _toleranciaCalculo))
                         {
                             _mensajesError.AddMensaje(CodigoError.V2000, $"descuentoGlobalNoAfectaBI.importe incorrecto Valor enviado: {_cpe.descuentoGlobalNoAfectaBI.importe} Valor calculado: {decimal.Round(_descuentoGlobalNoAfectaBICalculado, 2)}; Formula: descuentoGlobalNoAfectaBI.importe = descuentoGlobalNoAfectaBI.montoBase * tasaDescuentoGlobal");
                         }
@@ -1653,13 +1726,13 @@ namespace GasperSoft.SUNAT
 
             #region Validar Operaciones Gratuitas
 
-            if (!Validaciones.ValidarToleranciaCalculo(_cpe.totalOperacionesGratuitas, decimal.Round(_totalOperacionesGratuitasCalculado, 2), _toleranciaCalculo))
+            if (!ValidarToleranciaCalculo(_cpe.totalOperacionesGratuitas, decimal.Round(_totalOperacionesGratuitasCalculado, 2), _toleranciaCalculo))
             {
                 _mensajesError.AddMensaje(CodigoError.V2000, $"totalOperacionesGratuitas incorrecto Valor enviado: {_cpe.totalOperacionesGratuitas} Valor calculado: {decimal.Round(_totalOperacionesGratuitasCalculado, 2)}; Formula: totalOperacionesGratuitas = (Suma del 'valorVenta' de cada detalle que tenga 'codAfectacionIGV' != '10','20','30' ó '40')");
             }
             else
             {
-                if (!Validaciones.ValidarToleranciaCalculo(_cpe.sumatoriaIGVGratuitas, decimal.Round(_totalIGVGratuitasCalculado, 2), _toleranciaCalculo))
+                if (!ValidarToleranciaCalculo(_cpe.sumatoriaIGVGratuitas, decimal.Round(_totalIGVGratuitasCalculado, 2), _toleranciaCalculo))
                 {
                     _mensajesError.AddMensaje(CodigoError.V2000, $"sumatoriaIGVGratuitas incorrecto Valor enviado: {_cpe.sumatoriaIGVGratuitas} Valor calculado: {decimal.Round(_totalIGVGratuitasCalculado, 2)}; Formula: sumatoriaIGVGratuitas = (Suma del 'montoIGV' de cada detalle que tenga 'codAfectacionIGV' comience con '1' y no sea '10')");
                 }
@@ -1667,48 +1740,48 @@ namespace GasperSoft.SUNAT
 
             #endregion
 
-            if (!Validaciones.ValidarToleranciaCalculo(_cpe.sumatoriaMontoBaseISC, decimal.Round(_sumatoriaMontoBaseISCCalculado, 2), _toleranciaCalculo))
+            if (!ValidarToleranciaCalculo(_cpe.sumatoriaMontoBaseISC, decimal.Round(_sumatoriaMontoBaseISCCalculado, 2), _toleranciaCalculo))
             {
                 _mensajesError.AddMensaje(CodigoError.V2000, $"sumatoriaMontoBaseISC incorrecto Valor enviado: {_cpe.sumatoriaMontoBaseISC} Valor calculado: {decimal.Round(_sumatoriaMontoBaseISCCalculado, 2)}; Formula: sumatoriaMontoBaseISC = Suma del 'montoBaseISC' de cada detalle que no es gratuito");
 
                 return false;
             }
 
-            if (!Validaciones.ValidarToleranciaCalculo(_cpe.sumatoriaMontoBaseOTH, decimal.Round(_sumatoriaMontoBaseOTHCalculado, 2), _toleranciaCalculo))
+            if (!ValidarToleranciaCalculo(_cpe.sumatoriaMontoBaseOTH, decimal.Round(_sumatoriaMontoBaseOTHCalculado, 2), _toleranciaCalculo))
             {
                 _mensajesError.AddMensaje(CodigoError.V2000, $"sumatoriaMontoBaseOTH incorrecto Valor enviado: {_cpe.sumatoriaMontoBaseOTH} Valor calculado: {decimal.Round(_sumatoriaMontoBaseOTHCalculado, 2)}; Formula: sumatoriaMontoBaseOTH = Suma del 'montoBaseOTH' de cada detalle");
 
                 return false;
             }
 
-            if (!Validaciones.ValidarToleranciaCalculo(_cpe.sumatoriaISC, decimal.Round(_sumatoriaISCCalculado, 2), _toleranciaCalculo))
+            if (!ValidarToleranciaCalculo(_cpe.sumatoriaISC, decimal.Round(_sumatoriaISCCalculado, 2), _toleranciaCalculo))
             {
                 _mensajesError.AddMensaje(CodigoError.V2000, $"sumatoriaISC incorrecto Valor enviado: {_cpe.sumatoriaISC} Valor calculado: {decimal.Round(_sumatoriaISCCalculado, 2)}; Formula: sumatoriaISC = Suma del 'montoISC' de cada detalle que no es gratuito - Suma del 'totalISC' de los anticipos");
 
                 return false;
             }
 
-            if (!Validaciones.ValidarToleranciaCalculo(_cpe.sumatoriaICBPER, decimal.Round(_sumatoriaICBPERCalculado, 2), _toleranciaCalculo))
+            if (!ValidarToleranciaCalculo(_cpe.sumatoriaICBPER, decimal.Round(_sumatoriaICBPERCalculado, 2), _toleranciaCalculo))
             {
                 _mensajesError.AddMensaje(CodigoError.V2000, $"sumatoriaICBPER incorrecto Valor enviado: {_cpe.sumatoriaICBPER} Valor calculado: {decimal.Round(_sumatoriaICBPERCalculado, 2)}; Formula: sumatoriaICBPER = Suma del 'montoICBPER' de cada detalle");
 
                 return false;
             }
 
-            if (!Validaciones.ValidarToleranciaCalculo(_cpe.sumatoriaOTH, decimal.Round(_sumatoriaOTHCalculado, 2), _toleranciaCalculo))
+            if (!ValidarToleranciaCalculo(_cpe.sumatoriaOTH, decimal.Round(_sumatoriaOTHCalculado, 2), _toleranciaCalculo))
             {
                 _mensajesError.AddMensaje(CodigoError.V2000, $"sumatoriaOTH incorrecto Valor enviado: {_cpe.sumatoriaOTH} Valor calculado: {decimal.Round(_sumatoriaOTHCalculado, 2)}; Formula: sumatoriaOTH = Suma del 'montoOTH' de cada detalle");
 
                 return false;
             }
 
-            if (!Validaciones.ValidarToleranciaCalculo(_cpe.sumatoriaIGV, decimal.Round(_sumatoriaIGVCalculado, 2), _toleranciaCalculo))
+            if (!ValidarToleranciaCalculo(_cpe.sumatoriaIGV, decimal.Round(_sumatoriaIGVCalculado, 2), _toleranciaCalculo))
             {
                 _mensajesError.AddMensaje(CodigoError.V2000, $"sumatoriaIGV incorrecto Valor enviado: {_cpe.sumatoriaIGV} Valor calculado: {decimal.Round(_sumatoriaIGVCalculado, 2)}; Formula: sumatoriaIGV = [(Suma del 'montoBaseIGV' de cada detalle que tenga 'codAfectacionIGV' = '10') - descuentoGlobalAfectaBI.importe - (Suma de 'totalOperacionesGravadas' de cada anticipo) - (Suma de 'totalISC' de cada anticipo)] * TasaIGV / 100");
                 return false;
             }
 
-            if (!Validaciones.ValidarToleranciaCalculo(_cpe.sumatoriaImpuestos, decimal.Round(_sumatoriaImpuestosCalculado, 2), _toleranciaCalculo))
+            if (!ValidarToleranciaCalculo(_cpe.sumatoriaImpuestos, decimal.Round(_sumatoriaImpuestosCalculado, 2), _toleranciaCalculo))
             {
                 _mensajesError.AddMensaje(CodigoError.V2000, $"sumatoriaImpuestos incorrecto Valor enviado: {_cpe.sumatoriaImpuestos} Valor calculado: {decimal.Round(_sumatoriaImpuestosCalculado, 2)}; Formula: sumatoriaImpuestos = sumatoriaIGV + sumatoriaISC + sumatoriaOTH + sumatoriaICBPER");
                 return false;
@@ -1724,7 +1797,7 @@ namespace GasperSoft.SUNAT
                 {
                     decimal _montoRecargoAlConsumoCalculado = _cpe.recargoAlConsumo.montoBase * _cpe.recargoAlConsumo.tasa;
 
-                    if (!Validaciones.ValidarToleranciaCalculo(_cpe.recargoAlConsumo.importe, decimal.Round(_montoRecargoAlConsumoCalculado, 2), _toleranciaCalculo))
+                    if (!ValidarToleranciaCalculo(_cpe.recargoAlConsumo.importe, decimal.Round(_montoRecargoAlConsumoCalculado, 2), _toleranciaCalculo))
                     {
                         _mensajesError.AddMensaje(CodigoError.V2000, $"recargoAlConsumo.importe incorrecto Valor enviado: {_cpe.recargoAlConsumo.importe} Valor calculado: {decimal.Round(_montoRecargoAlConsumoCalculado, 2)}; Formula: recargoAlConsumo.importe = recargoAlConsumo.montoBase * recargoAlConsumo.tasa");
                     }
@@ -1741,7 +1814,7 @@ namespace GasperSoft.SUNAT
                 {
                     decimal _recargoFISECalculado = _cpe.recargoFISE.montoBase * _cpe.recargoFISE.tasa;
 
-                    if (!Validaciones.ValidarToleranciaCalculo(_cpe.recargoFISE.importe, decimal.Round(_recargoFISECalculado, 2), _toleranciaCalculo))
+                    if (!ValidarToleranciaCalculo(_cpe.recargoFISE.importe, decimal.Round(_recargoFISECalculado, 2), _toleranciaCalculo))
                     {
                         _mensajesError.AddMensaje(CodigoError.V2000, $"recargoFISE.importe incorrecto Valor enviado: {_cpe.recargoFISE.importe} Valor calculado: {decimal.Round(_recargoFISECalculado, 2)}; Formula: recargoFISE.importe = recargoFISE.montoBase * recargoFISE.tasa");
                     }
@@ -1757,12 +1830,12 @@ namespace GasperSoft.SUNAT
             }
 
             //Hay error en los montos ya no continuamos
-            if (_mensajesError.Count > 0)
+            if (GetTotalErrores(_mensajesError) > 0)
             {
                 return false;
             }
 
-            if (!Validaciones.ValidarToleranciaCalculo(_cpe.totalDescuentosNoAfectaBI, decimal.Round(_totalDescuentosNOAfectaBICalculado, 2), _toleranciaCalculo))
+            if (!ValidarToleranciaCalculo(_cpe.totalDescuentosNoAfectaBI, decimal.Round(_totalDescuentosNOAfectaBICalculado, 2), _toleranciaCalculo))
             {
                 if (_esExportacion)
                 {
@@ -1776,28 +1849,28 @@ namespace GasperSoft.SUNAT
                 return false;
             }
 
-            if (!Validaciones.ValidarToleranciaCalculo(_cpe.valorVenta, decimal.Round(_valorVentaCalculado, 2), _toleranciaCalculo))
+            if (!ValidarToleranciaCalculo(_cpe.valorVenta, decimal.Round(_valorVentaCalculado, 2), _toleranciaCalculo))
             {
                 _mensajesError.AddMensaje(CodigoError.V2000, $"valorVenta incorrecto Valor enviado: {_cpe.valorVenta} Valor calculado: {decimal.Round(_valorVentaCalculado, 2)}; Formula: valorVenta = (Suma del 'valorVenta' de cada detalle que tenga 'codAfectacionIGV' = '10','20','30' ó '40') - descuentoGlobalAfectaBI.importe");
                 return false;
             }
 
-            if (!Validaciones.ValidarToleranciaCalculo(_cpe.precioVenta, decimal.Round(_precioVentaCalculado, 2), _toleranciaCalculo))
+            if (!ValidarToleranciaCalculo(_cpe.precioVenta, decimal.Round(_precioVentaCalculado, 2), _toleranciaCalculo))
             {
-                _mensajesError.AddMensaje(CodigoError.V2000, $"precioVenta incorrecto Valor enviado: {_cpe.precioVenta} Valor calculado: {decimal.Round(_precioVentaCalculado, 2)}; Formula: precioVenta = valorVenta + sumatoriaICBPER + sumatoriaISC + (Suma del 'totalISC' de los anticipos) + sumatoriaOTH + sumatoriaIGV");
+                _mensajesError.AddMensaje(CodigoError.V2000, $"precioVenta incorrecto Valor enviado: {_cpe.precioVenta} Valor calculado: {decimal.Round(_precioVentaCalculado, 2)}; Formula: precioVenta = valorVenta + sumatoriaICBPER + sumatoriaISC + (Suma del 'totalISC' de los anticipos) + sumatoriaOTH + ([(Suma del 'valorVenta' de cada detalle que tenga 'codAfectacionIGV' = '10') - descuentoGlobalAfectaBI.importe + (Suma del 'montoISC' de cada detalle que tenga 'codAfectacionIGV' = '10')] * tasaIGV / 100)");
                 return false;
             }
 
             if (_cpe.tipoDocumento == "01" || _cpe.tipoDocumento == "03")
             {
-                if (!Validaciones.ValidarToleranciaCalculo(_cpe.sumatoriaOtrosCargosNoAfectaBI, decimal.Round(_sumatoriaOtrosCargosNoAfectaBICalculado, 2), _toleranciaCalculo))
+                if (!ValidarToleranciaCalculo(_cpe.sumatoriaOtrosCargosNoAfectaBI, decimal.Round(_sumatoriaOtrosCargosNoAfectaBICalculado, 2), _toleranciaCalculo))
                 {
                     _mensajesError.AddMensaje(CodigoError.V2000, $"sumatoriaOtrosCargosNoAfectaBI incorrecto Valor enviado: {_cpe.sumatoriaOtrosCargosNoAfectaBI} Valor calculado: {decimal.Round(_sumatoriaOtrosCargosNoAfectaBICalculado, 2)}; Formula: sumatoriaOtrosCargosNoAfectaBI =  (Suma del 'otrosCargosNoAfectaBI.importe' de cada detalle) + montoRecargoAlConsumo + montoFISE + otrosCargosGlobalNoAfectaBI.importe");
                     return false;
                 }
             }
 
-            if (!Validaciones.ValidarToleranciaCalculo(_cpe.importeTotal, decimal.Round(_importeTotalCalculado, 2), _toleranciaCalculo))
+            if (!ValidarToleranciaCalculo(_cpe.importeTotal, decimal.Round(_importeTotalCalculado, 2), _toleranciaCalculo))
             {
                 _mensajesError.AddMensaje(CodigoError.V2000, $"importeTotal incorrecto Valor enviado: {_cpe.importeTotal} Valor calculado: {decimal.Round(_importeTotalCalculado, 2)}; Formula: importeTotal = precioVenta + sumatoriaOtrosCargosNoAfectaBI - totalDescuentosNoAfectaBI - totalAnticipos + totalRedondeo");
                 return false;
@@ -1819,7 +1892,7 @@ namespace GasperSoft.SUNAT
 
                 var _rentencionCalculado = _cpe.retencion.montoBase * _cpe.retencion.tasa;
 
-                if (!Validaciones.ValidarToleranciaCalculo(_cpe.retencion.importe, decimal.Round(_rentencionCalculado, 2), _toleranciaCalculo))
+                if (!ValidarToleranciaCalculo(_cpe.retencion.importe, decimal.Round(_rentencionCalculado, 2), _toleranciaCalculo))
                 {
                     _mensajesError.AddMensaje(CodigoError.V2000, $"retencion.importe incorrecto Valor enviado: {_cpe.retencion.importe} Valor calculado: {decimal.Round(_rentencionCalculado, 2)}; Formula: retencion.importe = retencion.montoBase * retencion.tasa");
                     return false;
@@ -1845,7 +1918,7 @@ namespace GasperSoft.SUNAT
                 {
                     if (_cpe.informacionPago.formaPago == FormaPagoType.Credito)
                     {
-                        if (_cpe.informacionPago.cuotas?.Count == 0)
+                        if ((_cpe.informacionPago.cuotas?.Count ?? 0) == 0)
                         {
                             _mensajesError.AddMensaje(CodigoError.S3249);
                         }
@@ -1888,6 +1961,36 @@ namespace GasperSoft.SUNAT
                 if (_cpe.tipoDocumento == "01" || _esNotaCreditoMotivo13)
                 {
                     _mensajesError.AddMensaje(CodigoError.S3244);
+                }
+            }
+
+            #endregion
+
+            #region Informacion Adicional
+
+            if (_cpe.informacionAdicional?.Count > 0)
+            {
+                var _informacionAdicional = new Dictionary<string, string>();
+
+                _idRecord = 0;
+                foreach (var item in _cpe.informacionAdicional)
+                {
+                    if (!IsValidCodigoInformacionAdicional(item.codigo))
+                    {
+                        _mensajesError.AddMensaje(CodigoError.V0025, $"informacionAdicional[{_idRecord}].codigo = '{item.codigo}'");
+                        continue;
+                    }
+
+                    if (_informacionAdicional.ContainsKey(item.codigo))
+                    {
+                        _mensajesError.AddMensaje(CodigoError.V0041, $"informacionAdicional[{_idRecord}].codigo = '{item.codigo}'");
+                    }
+                    else
+                    {
+                        _informacionAdicional.Add(item.codigo, item.valor);
+                    }
+
+                    _idRecord++;
                 }
             }
 

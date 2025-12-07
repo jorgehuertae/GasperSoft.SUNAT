@@ -10,18 +10,28 @@ using static GasperSoft.SUNAT.Validaciones;
 
 namespace GasperSoft.SUNAT
 {
+    /// <summary>
+    /// Validador de Comprobante de Retención Electrónica
+    /// </summary>
     public class ValidadorCRE
     {
         private readonly CREType _cre;
         private readonly List<Error> _mensajesError;
         private decimal _toleranciaCalculo = 0.2m;
 
+        /// <summary>
+        /// Inicia una nueva instancia de la clase ValidadorCRE
+        /// </summary>
+        /// <param name="cre">El CRE a Validar</param>
         public ValidadorCRE(CREType cre)
         {
             _cre = cre;
             _mensajesError = new List<Error>();
         }
 
+        /// <summary>
+        /// Un valor entre 0.20 y 1 que indica la tolerancia de los calculos
+        /// </summary>
         public decimal ToleranciaCalculo
         {
             get
@@ -44,6 +54,9 @@ namespace GasperSoft.SUNAT
             }
         }
 
+        /// <summary>
+        /// Errores de validacion del CRE
+        /// </summary>
         public List<Error> Errors
         {
             get
@@ -57,6 +70,10 @@ namespace GasperSoft.SUNAT
         /// </summary>
         public event ValidarTasaRetencion OnValidarTasaRetencion;
 
+        /// <summary>
+        /// Valida el CRE
+        /// </summary>
+        /// <returns>Valor booleano que indica si el CRE es valido</returns>
         public bool Validar()
         {
             _mensajesError.Clear();
@@ -70,7 +87,7 @@ namespace GasperSoft.SUNAT
                 return false;
             }
 
-            if (_cre.detalles?.Count == 0)
+            if ((_cre.detalles?.Count ?? 0) == 0)
             {
                 _mensajesError.AddMensaje(CodigoError.V0007);
                 return false;
@@ -333,6 +350,36 @@ namespace GasperSoft.SUNAT
             {
                 _mensajesError.AddMensaje(CodigoError.V2000, $"importeTotalRetenido incorrecto Valor enviado: {_cre.importeTotalRetenido} Valor calculado: {_importeTotalRetenidoCalculado}; Formula: importeTotalRetenido = Suma del 'importeRetenido' de cada detalle (sin considerar los tipos de documentos '07' y '20')");
                 return false;
+            }
+
+            #endregion
+
+            #region Informacion Adicional
+
+            if (_cre.informacionAdicional?.Count > 0)
+            {
+                var _informacionAdicional = new Dictionary<string, string>();
+
+                _idRecord = 0;
+                foreach (var item in _cre.informacionAdicional)
+                {
+                    if (!Validaciones.IsValidCodigoInformacionAdicional(item.codigo))
+                    {
+                        _mensajesError.AddMensaje(CodigoError.V0025, $"informacionAdicional[{_idRecord}].codigo = '{item.codigo}'");
+                        continue;
+                    }
+
+                    if (_informacionAdicional.ContainsKey(item.codigo))
+                    {
+                        _mensajesError.AddMensaje(CodigoError.V0041, $"informacionAdicional[{_idRecord}].codigo = '{item.codigo}'");
+                    }
+                    else
+                    {
+                        _informacionAdicional.Add(item.codigo, item.valor);
+                    }
+
+                    _idRecord++;
+                }
             }
 
             #endregion

@@ -8,7 +8,8 @@ using System.Collections.Generic;
 
 namespace GasperSoft.SUNAT.UBL.V2
 {
-    public class GuiaRemision : Comun
+    /// <remarks/>
+    public static class GuiaRemision
     {
         private static string GetDocumentType(string codigo)
         {
@@ -83,11 +84,11 @@ namespace GasperSoft.SUNAT.UBL.V2
 
         private static DocumentReferenceType[] GetDocumentosReferenciaAdicionales(List<DocumentoRelacionadoGREType> documentosReferenciaAdicionales)
         {
-            var _documentReference = new List<DocumentReferenceType>();
+            var _documentsReference = new List<DocumentReferenceType>();
 
             foreach (var item in documentosReferenciaAdicionales)
             {
-                _documentReference.Add(new DocumentReferenceType()
+                var _documentReference = new DocumentReferenceType()
                 {
                     ID = new IDType() { Value = item.numeroDocumento },
 
@@ -103,9 +104,12 @@ namespace GasperSoft.SUNAT.UBL.V2
                     DocumentType = new DocumentTypeType()
                     {
                         Value = GetDocumentType(item.tipoDocumento)
-                    },
+                    }
+                };
 
-                    IssuerParty = new PartyType()
+                if (item.emisor != null)
+                {
+                    _documentReference.IssuerParty = new PartyType()
                     {
                         PartyIdentification = new PartyIdentificationType[]
                         {
@@ -120,11 +124,13 @@ namespace GasperSoft.SUNAT.UBL.V2
                                 }
                             }
                         }
-                    }
-                });
+                    };
+                }
+
+                _documentsReference.Add(_documentReference);
             }
 
-            return _documentReference.ToArray();
+            return _documentsReference.ToArray();
         }
 
         private static DespatchLineType[] GetItems(List<ItemGREType> items)
@@ -176,13 +182,13 @@ namespace GasperSoft.SUNAT.UBL.V2
                             }
                         },
 
-                        SellersItemIdentification = GetCodigoProductoItem(item.codigoProducto),
+                        SellersItemIdentification = Comun.GetCodigoProductoItem(item.codigoProducto),
 
                         //Codigo producto de SUNAT (C)
-                        CommodityClassification = GetCodigoProductoSunatItem(item.codigoProductoSunat),
+                        CommodityClassification = Comun.GetCodigoProductoSunatItem(item.codigoProductoSunat),
 
                         //Código de producto GS1 (C)
-                        StandardItemIdentification = GetCodigoProductoGS1Item(item.tipoCodigoProductoGS1, item.codigoProductoGS1),
+                        StandardItemIdentification = Comun.GetCodigoProductoGS1Item(item.tipoCodigoProductoGS1, item.codigoProductoGS1),
 
                         AdditionalItemProperty = GetAdditionalsItemProperty(item)
                     }
@@ -401,12 +407,12 @@ namespace GasperSoft.SUNAT.UBL.V2
         }
 
         /// <summary>
-        /// Extructura tomada de:
-        /// https://cpe.sunat.gob.pe/sites/default/files/inline-files/ValidacionesGREv20221020_publicacion.xlsx
+        /// Convierte un objeto GREType a DespatchAdviceType
         /// </summary>
         /// <param name="datos">Informacion del comprobante</param>
         /// <param name="emisor">Informacion del emisor</param>
-        /// <returns></returns>
+        /// <param name="signature">Una cadena de texto que se usa para "Signature ID", Por defecto se usará la cadena predeterminada "signatureGASPERSOFT"</param>
+        /// <returns>DespatchAdviceType con la informacion del documento</returns>
         public static DespatchAdviceType GetDocumento(GREType datos, EmisorType emisor, string signature = null)
         {
             var _despatchAdvice = new DespatchAdviceType()
@@ -445,12 +451,9 @@ namespace GasperSoft.SUNAT.UBL.V2
                     listURI = "urn:pe:gob:sunat:cpe:see:gem:catalogos:catalogo01"
                 },
 
-                UBLExtensions = new UBLExtensionType[]
-                {
-                    new UBLExtensionType() { }
-                },
+                UBLExtensions = (datos.informacionAdicionalEnXml && datos.informacionAdicional?.Count > 0) ? Comun.GetUBLExtensions(datos.informacionAdicional) : Comun.GetUBLExtensions(),
 
-                Signature = GetSignature(emisor, signature),
+                Signature = Comun.GetSignature(emisor, signature),
 
                 //Datos del Destinatario
                 DeliveryCustomerParty = new CustomerPartyType()

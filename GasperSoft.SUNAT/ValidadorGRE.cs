@@ -10,17 +10,27 @@ using static GasperSoft.SUNAT.Validaciones;
 
 namespace GasperSoft.SUNAT
 {
+    /// <summary>
+    /// Validador de Guia de Remisión Electrónica
+    /// </summary>
     public class ValidadorGRE
     {
         private readonly GREType _gre;
         private readonly List<Error> _mensajesError;
 
+        /// <summary>
+        /// Inicia una nueva instancia de la clase ValidadorCPE
+        /// </summary>
+        /// <param name="gre">La GRE a Validar</param>
         public ValidadorGRE(GREType gre)
         {
             _gre = gre;
             _mensajesError = new List<Error>();
         }
 
+        /// <summary>
+        /// Errores de validacion de la GRE
+        /// </summary>
         public List<Error> Errors
         {
             get
@@ -34,6 +44,10 @@ namespace GasperSoft.SUNAT
         /// </summary>
         public event ValidarCatalogoSunat OnValidarCatalogoSunat;
 
+        /// <summary>
+        /// Valida la GRE
+        /// </summary>
+        /// <returns>Valor booleano que indica si la GRE es valida</returns>
         public bool Validar()
         {
             if (OnValidarCatalogoSunat == null)
@@ -206,6 +220,36 @@ namespace GasperSoft.SUNAT
             }
 
             #endregion
+
+            #region Informacion Adicional
+
+            if (_gre.informacionAdicional?.Count > 0)
+            {
+                var _informacionAdicional = new Dictionary<string, string>();
+
+                _idRecord = 0;
+                foreach (var item in _gre.informacionAdicional)
+                {
+                    if (!Validaciones.IsValidCodigoInformacionAdicional(item.codigo))
+                    {
+                        _mensajesError.AddMensaje(CodigoError.V0025, $"informacionAdicional[{_idRecord}].codigo = '{item.codigo}'");
+                        continue;
+                    }
+
+                    if (_informacionAdicional.ContainsKey(item.codigo))
+                    {
+                        _mensajesError.AddMensaje(CodigoError.V0041, $"informacionAdicional[{_idRecord}].codigo = '{item.codigo}'");
+                    }
+                    else
+                    {
+                        _informacionAdicional.Add(item.codigo, item.valor);
+                    }
+
+                    _idRecord++;
+                }
+            }
+
+            #endregion
         }
 
         private bool ValidarGuiaTransportista()
@@ -322,7 +366,7 @@ namespace GasperSoft.SUNAT
                 }
             }
 
-            if (string.IsNullOrEmpty(_gre.datosEnvio.motivoTraslado))
+            if (Validaciones.IsNullOrWhiteSpace(_gre.datosEnvio.motivoTraslado))
             {
                 _mensajesError.AddMensaje(CodigoError.S3404, $"datosEnvio.motivoTraslado = '{_gre.datosEnvio.modalidadTraslado}'");
                 return false;
@@ -333,7 +377,7 @@ namespace GasperSoft.SUNAT
                 return false;
             }
 
-            if (string.IsNullOrEmpty(_gre.datosEnvio.modalidadTraslado))
+            if (Validaciones.IsNullOrWhiteSpace(_gre.datosEnvio.modalidadTraslado))
             {
                 _mensajesError.AddMensaje(CodigoError.S2532, $"datosEnvio.modalidadTraslado = '{_gre.datosEnvio.modalidadTraslado}'");
                 return false;
@@ -447,7 +491,7 @@ namespace GasperSoft.SUNAT
                 }
 
                 //Codigo de establecimiento es obligatorio
-                if (string.IsNullOrEmpty(_gre.datosEnvio.puntoPartida.codigoEstablecimiento))
+                if (Validaciones.IsNullOrWhiteSpace(_gre.datosEnvio.puntoPartida.codigoEstablecimiento))
                 {
                     _mensajesError.AddMensaje(CodigoError.S3365, "datosEnvio.puntoPartida.codigoEstablecimiento");
                 }
@@ -488,7 +532,7 @@ namespace GasperSoft.SUNAT
                     }
 
                     //Codigo de establecimiento es obligatorio
-                    if (string.IsNullOrEmpty(_gre.datosEnvio.puntoLlegada.codigoEstablecimiento))
+                    if (Validaciones.IsNullOrWhiteSpace(_gre.datosEnvio.puntoLlegada.codigoEstablecimiento))
                     {
                         _mensajesError.AddMensaje(CodigoError.S3365, "datosEnvio.puntoLlegada.codigoEstablecimiento");
                     }
@@ -524,7 +568,7 @@ namespace GasperSoft.SUNAT
                         }
                         else
                         {
-                            if (!string.IsNullOrEmpty(item.numeroTarjeta))
+                            if (!Validaciones.IsNullOrWhiteSpace(item.numeroTarjeta))
                             {
                                 //Si existe el Indicador de registro de vehículos y conductores del transportista es falso no se debe registrar el Tuc
                                 if ((_gre.datosEnvio.indicadoresGRERemitente?.indVehiculoConductoresTransp ?? false) == false)
@@ -579,7 +623,7 @@ namespace GasperSoft.SUNAT
 
                                 foreach (var autorizacion in item.autorizacionesEspeciales)
                                 {
-                                    if (!string.IsNullOrEmpty(autorizacion.codigoEntidadAutorizadora))
+                                    if (!Validaciones.IsNullOrWhiteSpace(autorizacion.codigoEntidadAutorizadora))
                                     {
                                         if (!OnValidarCatalogoSunat("D37", autorizacion.codigoEntidadAutorizadora))
                                         {
@@ -712,10 +756,90 @@ namespace GasperSoft.SUNAT
 
             #endregion
 
+            if (_gre.documentosRelacionados?.Count > 0)
+            {
+                _idRecord = 0;
+                foreach (var item in _gre.documentosRelacionados)
+                {
+                    //Si el 'Código del tipo de documento relacionado' es '01', '03', '04', '09', '12', '48', no existe el Tag UBL o es vacío
+                    if ((new List<string>() { "01", "03", "04", "09", "12", "48" }).Contains(item.tipoDocumento))
+                    {
+                        if (item.emisor == null)
+                        {
+                            _mensajesError.AddMensaje(CodigoError.S3380, $"gre.documentosRelacionados[{_idRecord}].emisor no puede ser NULL para gre.documentosRelacionados[{_idRecord}].tipoDocumento = '{item.tipoDocumento}'");
+                            return false;
+                        }
+                    }
+
+                    //Si el Tag UBL existe y es diferente de vacío, y el 'Motivo de traslado' es '01', '03' y el 'Código del tipo de documento relacionado' es '01', '03', '12', el valor del Tag UBL es diferente al RUC del remitente
+                    if ((new List<string>() { "01", "03" }).Contains(_gre.datosEnvio.motivoTraslado) && (new List<string> { "01", "03", "12" }).Contains(item.tipoDocumento))
+                    {
+                        if (item.emisor?.tipoDocumentoIdentificacion != _gre.remitente.tipoDocumentoIdentificacion
+                            || item.emisor?.numeroDocumentoIdentificacion != _gre.remitente.numeroDocumentoIdentificacion)
+                        {
+                            _mensajesError.AddMensaje(CodigoError.S3381, $"gre.documentosRelacionados[{_idRecord}].emisor debe ser el mismo que el remitente");
+                            return false;
+                        }
+                    }
+
+                    //Si el Tag UBL existe y es diferente de vacío y el 'Código del tipo de documento relacionado' es '09', el valor del Tag UBL es diferente al RUC del remitente
+                    if (item.tipoDocumento == "09")
+                    {
+                        if (item.emisor?.tipoDocumentoIdentificacion != _gre.remitente.tipoDocumentoIdentificacion
+                            || item.emisor?.numeroDocumentoIdentificacion != _gre.remitente.numeroDocumentoIdentificacion)
+                        {
+                            _mensajesError.AddMensaje(CodigoError.S3381, $"gre.documentosRelacionados[{_idRecord}].emisor debe ser el mismo que el remitente");
+                            return false;
+                        }
+                    }
+
+                    //Si el Tag UBL existe y es diferente de vacío, y el 'Motivo de traslado' es '02' y el 'Código del tipo de documento relacionado' es '04', '48' el valor del Tag UBL es diferente al RUC del remitente
+                    if (_gre.datosEnvio.motivoTraslado == "02" && (new List<string> { "04", "48" }).Contains(item.tipoDocumento))
+                    {
+                        if (item.emisor?.tipoDocumentoIdentificacion != _gre.remitente.tipoDocumentoIdentificacion
+                            || item.emisor?.numeroDocumentoIdentificacion != _gre.remitente.numeroDocumentoIdentificacion)
+                        {
+                            _mensajesError.AddMensaje(CodigoError.S3381, $"gre.documentosRelacionados[{_idRecord}].emisor debe ser el mismo que el remitente");
+                            return false;
+                        }
+                    }
+
+                    //Si el Tag UBL existe y es diferente de vacío, y el 'Motivo de traslado' es '06' y el 'Código del tipo de documento relacionado' es  '01', '03', '12', el valor del Tag UBL es diferente al RUC del destinatario
+                    if (_gre.datosEnvio.motivoTraslado == "06" && (new List<string> { "01", "03", "12" }).Contains(item.tipoDocumento))
+                    {
+                        if (item.emisor?.tipoDocumentoIdentificacion != _gre.destinatario.tipoDocumentoIdentificacion
+                            || item.emisor?.numeroDocumentoIdentificacion != _gre.destinatario.numeroDocumentoIdentificacion)
+                        {
+                            _mensajesError.AddMensaje(CodigoError.S3381, $"gre.documentosRelacionados[{_idRecord}].emisor debe ser el mismo que el destinatario");
+                            return false;
+                        }
+                    }
+
+                    //Si el Tag UBL existe y es diferente de vacío, el valor del Tag UBL es diferente de numérico de 11 dígitos
+                    if (item.emisor != null)
+                    {
+                        //Si el 'Código del tipo de documento relacionado' es '01', '03', '04', '09', '12', '48', el atributo del Tag UBL no existe o es diferente a 6 (RUC)
+                        if ((new List<string> { "01", "03", "04", "09", "12", "48" }).Contains(item.tipoDocumento) && item.emisor.tipoDocumentoIdentificacion != "6")
+                        {
+                            _mensajesError.AddMensaje(CodigoError.S3382, $"gre.documentosRelacionados[{_idRecord}].emisor.tipoDocumentoIdentificacion = '{item.emisor.tipoDocumentoIdentificacion}'");
+                            return false;
+                        }
+
+                        if (!Validaciones.IsValidRuc(item.emisor.numeroDocumentoIdentificacion))
+                        {
+                            _mensajesError.AddMensaje(CodigoError.S3409, $"gre.documentosRelacionados[{_idRecord}].emisor.numeroDocumentoIdentificacion = '{item.emisor.numeroDocumentoIdentificacion}'");
+                            return false;
+                        }
+                    }
+
+                    _idRecord++;
+                }
+            }
+
             if (_gre.datosEnvio.motivoTraslado == "08" || _gre.datosEnvio.motivoTraslado == "09")
             {
                 //El tipo de operacion es importacion/ exportacion y se requieren documentos relacionados
-                if (_gre.documentosRelacionados?.Count == 0)
+                if ((_gre.documentosRelacionados?.Count ?? 0) == 0)
                 {
                     _mensajesError.AddMensaje(CodigoError.S3440, "documentosRelacionados");
                     return false;
@@ -794,7 +918,7 @@ namespace GasperSoft.SUNAT
 
                 if (_debeExistirItemDAMoDS && _mensajesError.Count == 0)
                 {
-                    var _totalItemsConDAMoDS = _gre.detalles?.Select(x => !string.IsNullOrEmpty(x.partidaArancelaria)).Count();
+                    var _totalItemsConDAMoDS = _gre.detalles?.Select(x => !Validaciones.IsNullOrWhiteSpace(x.partidaArancelaria)).Count();
 
                     if ((_totalItemsConDAMoDS ?? 0) == 0)
                     {
@@ -814,7 +938,7 @@ namespace GasperSoft.SUNAT
 
             foreach (var item in _gre.detalles)
             {
-                if (!string.IsNullOrWhiteSpace(item.codigoProducto))
+                if (!Validaciones.IsNullOrWhiteSpace(item.codigoProducto))
                 {
                     if (!Validaciones.IsValidCodigoProducto(item.codigoProducto))
                     {
@@ -822,9 +946,9 @@ namespace GasperSoft.SUNAT
                     }
                 }
 
-                if (!string.IsNullOrEmpty(item.codigoProductoGS1))
+                if (!Validaciones.IsNullOrWhiteSpace(item.codigoProductoGS1))
                 {
-                    if (!string.IsNullOrWhiteSpace(item.tipoCodigoProductoGS1))
+                    if (!Validaciones.IsNullOrWhiteSpace(item.tipoCodigoProductoGS1))
                     {
                         var _tipoCodigoProductoGS1Permitidos = new List<string> { "GTIN-8", "GTIN-12", "GTIN-13", "GTIN-14" };
 
@@ -846,7 +970,7 @@ namespace GasperSoft.SUNAT
                     }
                 }
 
-                if (!string.IsNullOrWhiteSpace(item.codigoProductoSunat))
+                if (!Validaciones.IsNullOrWhiteSpace(item.codigoProductoSunat))
                 {
                     //Validar que codigoProductoSunat se encuentre en el catálogo N° 25
                     if (!OnValidarCatalogoSunat("25", item.codigoProductoSunat))
@@ -870,7 +994,7 @@ namespace GasperSoft.SUNAT
                     _mensajesError.AddMensaje(CodigoError.V0005, $"detalle[{_idRecord}].nombre");
                 }
 
-                if (!string.IsNullOrEmpty(item.partidaArancelaria))
+                if (!Validaciones.IsNullOrWhiteSpace(item.partidaArancelaria))
                 {
                     if (!Validaciones.IsValidPartidaArancelaria(item.partidaArancelaria))
                     {
@@ -890,7 +1014,7 @@ namespace GasperSoft.SUNAT
                     }
                 }
 
-                if (!string.IsNullOrEmpty(item.numeroDeclaracionAduanera))
+                if (!Validaciones.IsNullOrWhiteSpace(item.numeroDeclaracionAduanera))
                 {
                     if (_gre.datosEnvio.motivoTraslado != "08" && _gre.datosEnvio.motivoTraslado != "09")
                     {
@@ -917,7 +1041,7 @@ namespace GasperSoft.SUNAT
                     }
                 }
 
-                if (!string.IsNullOrEmpty(item.numeroSerieEnDeclaracionAduanera))
+                if (!Validaciones.IsNullOrWhiteSpace(item.numeroSerieEnDeclaracionAduanera))
                 {
                     if (_gre.datosEnvio.motivoTraslado != "08" && _gre.datosEnvio.motivoTraslado != "09")
                     {

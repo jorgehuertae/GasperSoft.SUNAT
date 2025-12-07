@@ -7,6 +7,9 @@ using System.Collections.Generic;
 
 namespace GasperSoft.SUNAT.DTO.GRE
 {
+    /// <summary>
+    /// Esta clase contiene todos los datos necesarios para armar una Guia Remision Remitente/Transportista
+    /// </summary>
     public class GREType
     {
         /// <summary>
@@ -85,8 +88,14 @@ namespace GasperSoft.SUNAT.DTO.GRE
         public DatosEnvioGREType datosEnvio { get; set; }
 
         /// <summary>
-        /// Informacion adicional del comprobante de pago estos datos no se envian a sunat.
-        /// Sirven para infromar a "Simple-Ubl" datos que se deben consignar en la representacion impresa
+        /// Indica si se debe incluir los valores de la propiedad informacionAdicional en el XML
+        /// </summary>
+        public bool informacionAdicionalEnXml { get; set; }
+
+        /// <summary>
+        /// Informacion adicional del comprobante de pago estos datos no se envian a sunat por defecto
+        /// si se requiere estos datos en el XML puede establecer la propiedad "informacionAdicionalEnXml" = true,
+        /// su propósito es poder usar estos datos en la versión impresa del comprobante
         /// </summary>
         public List<DatoAdicionalType> informacionAdicional { get; set; }
 

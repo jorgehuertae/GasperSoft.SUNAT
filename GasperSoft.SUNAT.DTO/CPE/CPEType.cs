@@ -315,11 +315,22 @@ namespace GasperSoft.SUNAT.DTO.CPE
         /// </summary>
         public bool indContratosSelva { get; set; }
 
+        /// <summary>
+        /// Agregar la leyenda codigo: 2008("VENTA EXONERADA DEL IGV-ISC-IPM. PROHIBIDA LA VENTA FUERA DE LA ZONA COMERCIAL DE TACNA")
+        /// </summary>
+        public bool indVentaZonaComercialTacna { get; set; }
+
         #endregion
 
         /// <summary>
-        /// Informacion adicional del comprobante de pago estos datos no se envian a sunat.
-        /// Sirven para infromar a "Simple-Ubl" datos que se deben consignar en la representacion impresa
+        /// Indica si se debe incluir los valores de la propiedad informacionAdicional en el XML
+        /// </summary>
+        public bool informacionAdicionalEnXml { get; set; }
+
+        /// <summary>
+        /// Informacion adicional del comprobante de pago estos datos no se envian a sunat por defecto
+        /// si se requiere estos datos en el XML puede establecer la propiedad "informacionAdicionalEnXml" = true,
+        /// su propósito es poder usar estos datos en la versión impresa del comprobante
         /// </summary>
         public List<DatoAdicionalType> informacionAdicional { get; set; }
 

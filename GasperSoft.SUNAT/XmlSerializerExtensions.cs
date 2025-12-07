@@ -57,6 +57,7 @@ namespace GasperSoft.SUNAT
                 case "InvoicedQuantityType":
                 case "DebitedQuantityType":
                 case "CreditedQuantityType":
+                case "DeliveredQuantityType":
                     _numberFormat = GetNumberFormat(10);
                     break;
                 case "GrossWeightMeasureType":

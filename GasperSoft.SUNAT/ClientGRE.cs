@@ -2,28 +2,38 @@
 // Copyright (C) 2024 GasperSoft.
 // Contacto: it@gaspersoft.com
 
+#if NET462_OR_GREATER || NET6_0_OR_GREATER
+
 using RestSharp;
 using RestSharp.Authenticators;
+using System;
 using System.Security.Cryptography;
 using System.Text.Json;
 
-namespace Pruebas
+namespace GasperSoft.SUNAT
 {
-    internal class ClientGRE
+    /// <summary>
+    /// Clase Para el envió de Guías a SUNAT
+    /// </summary>
+    public class ClientGRE
     {
-        private string _baseUrlServicio;
-        private string _baseUrlToken;
-        private string _ruc;
-        private string _usuarioSol;
-        private string _claveSol;
-        private string _clientID;
-        private string _clientSecret;
+        private readonly string _baseUrlServicio;
+        private readonly string _baseUrlToken;
+        private readonly string _ruc;
+        private readonly string _usuarioSol;
+        private readonly string _claveSol;
+        private readonly string _clientID;
+        private readonly string _clientSecret;
         private string _ticketSunat;
         private string _token;
         private byte[] _bytesCdr;
         private string _mensaje;
         private string _codigoMensaje;
 
+        /// <summary>
+        /// Delegado para el Evento EndGenerarToken
+        /// </summary>
+        /// <param name="token">Token Generado</param>
         public delegate void EventEndGenerarToken(string token);
 
         #region DTO SUNAT
@@ -81,6 +91,16 @@ namespace Pruebas
 
         #endregion
 
+        /// <summary>
+        /// Clase para el Envió de guías de remisión a SUNAT
+        /// </summary>
+        /// <param name="baseUrlServicio">Url base para el envio de guias</param>
+        /// <param name="baseUrlToken">Url base para generar el token</param>
+        /// <param name="ruc">Ruc</param>
+        /// <param name="usuarioSol">Usuario Sol</param>
+        /// <param name="claveSol">Clave Sol</param>
+        /// <param name="clientID">Client ID creado desde el portal de SUNAT</param>
+        /// <param name="clientSecret">Client Secret creado desde el portal de SUNAT</param>
         public ClientGRE(string baseUrlServicio,
                               string baseUrlToken,
                               string ruc,
@@ -89,13 +109,13 @@ namespace Pruebas
                               string clientID,
                               string clientSecret)
         {
-            if (string.IsNullOrEmpty(baseUrlServicio)) throw new ArgumentNullException(nameof(baseUrlServicio));
-            if (string.IsNullOrEmpty(baseUrlToken)) throw new ArgumentNullException(nameof(baseUrlToken));
-            if (string.IsNullOrEmpty(ruc)) throw new ArgumentNullException(nameof(ruc));
-            if (string.IsNullOrEmpty(usuarioSol)) throw new ArgumentNullException(nameof(usuarioSol));
-            if (string.IsNullOrEmpty(claveSol)) throw new ArgumentNullException(nameof(claveSol));
-            if (string.IsNullOrEmpty(clientID)) throw new ArgumentNullException(nameof(clientID));
-            if (string.IsNullOrEmpty(clientSecret)) throw new ArgumentNullException(nameof(clientSecret));
+            if (Validaciones.IsNullOrWhiteSpace(baseUrlServicio)) throw new ArgumentNullException(nameof(baseUrlServicio));
+            if (Validaciones.IsNullOrWhiteSpace(baseUrlToken)) throw new ArgumentNullException(nameof(baseUrlToken));
+            if (Validaciones.IsNullOrWhiteSpace(ruc)) throw new ArgumentNullException(nameof(ruc));
+            if (Validaciones.IsNullOrWhiteSpace(usuarioSol)) throw new ArgumentNullException(nameof(usuarioSol));
+            if (Validaciones.IsNullOrWhiteSpace(claveSol)) throw new ArgumentNullException(nameof(claveSol));
+            if (Validaciones.IsNullOrWhiteSpace(clientID)) throw new ArgumentNullException(nameof(clientID));
+            if (Validaciones.IsNullOrWhiteSpace(clientSecret)) throw new ArgumentNullException(nameof(clientSecret));
 
             _baseUrlServicio = baseUrlServicio;
             _baseUrlToken = baseUrlToken;
@@ -221,7 +241,7 @@ namespace Pruebas
 
         private bool ToKenVencido()
         {
-            if (string.IsNullOrEmpty(_token)) return true;
+            if (Validaciones.IsNullOrWhiteSpace(_token)) return true;
 
             try
             {
@@ -256,7 +276,7 @@ namespace Pruebas
 
                 return true;
             }
-            catch(Exception ex)
+            catch
             {
                 //Cualquier error devolvemos true
                 return true;
@@ -311,26 +331,41 @@ namespace Pruebas
         /// </summary>
         public EventEndGenerarToken EndGenerarToken;
 
+        /// <summary>
+        /// Devuelve el Ticket generado por SUNAT
+        /// </summary>
         public string GetTicketSunat
         {
             get { return _ticketSunat; }
         }
 
+        /// <summary>
+        /// Devuelve los Bytes del CDR devuelto por SUNAT
+        /// </summary>
         public byte[] GetBytesCdr
         {
             get { return _bytesCdr; }
         }
 
+        /// <summary>
+        /// Devuelve el mensaje de error generado por alguno de los métodos de envió/consulta SUNAT
+        /// </summary>
         public string GetMensaje
         {
             get { return _mensaje; }
         }
 
+        /// <summary>
+        /// Devuelve el codigo del mensaje de error (de existir) generado por alguno de los métodos de envió/consulta SUNAT
+        /// </summary>
         public string GetCodigoMensaje
         {
             get { return _codigoMensaje; }
         }
 
+        /// <summary>
+        /// Asigna un token de sesion para su uso en los métodos de envió/consulta SUNAT
+        /// </summary>
         public string SetToken
         {
             set
@@ -340,3 +375,5 @@ namespace Pruebas
         }
     }
 }
+
+#endif

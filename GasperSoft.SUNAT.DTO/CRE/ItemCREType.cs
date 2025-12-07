@@ -6,6 +6,9 @@ using System;
 
 namespace GasperSoft.SUNAT.DTO.CRE
 {
+    /// <summary>
+    /// 
+    /// </summary>
     public class ItemCREType
     {
         /// <summary>
@@ -38,16 +41,34 @@ namespace GasperSoft.SUNAT.DTO.CRE
         /// </summary>
         public decimal documentoRelacionadoImporteTotal { get; set; }
 
+        /// <summary>
+        /// Fecha de pago del comprobante
+        /// </summary>
         public DateTime fechaPago { get; set; }
 
+        /// <summary>
+        /// Numero de pago
+        /// </summary>
         public int numeroPago { get; set; }
 
+        /// <summary>
+        /// Importe del pago sin retención
+        /// </summary>
         public decimal pagoTotalSinRetencion { get; set; }
 
+        /// <summary>
+        /// Importe retenido
+        /// </summary>
         public decimal importeRetenido { get; set; }
 
+        /// <summary>
+        /// Fecha de la retención
+        /// </summary>
         public DateTime importeRetenidoFecha { get; set; }
 
+        /// <summary>
+        /// Importe pagado con retención
+        /// </summary>
         public decimal importePagadoConRetencion { get; set; }
 
         /// <summary>

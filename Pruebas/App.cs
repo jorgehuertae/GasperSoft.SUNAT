@@ -10,8 +10,9 @@ using GasperSoft.SUNAT.DTO.GRE;
 using GasperSoft.SUNAT.DTO.Resumen;
 using GasperSoft.SUNAT.UBL.V1;
 using GasperSoft.SUNAT.UBL.V2;
-using System.Drawing;
-using System.Runtime.CompilerServices;
+using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Security.Cryptography.X509Certificates;
 
 namespace Pruebas
@@ -29,7 +30,7 @@ namespace Pruebas
             provincia = "LIMA",
             distrito = "PUENTE PIEDRA"
         };
-        
+
         static void Main(string[] args)
         {
             //Si no existe el Directorio Storage lo creamos
@@ -42,8 +43,13 @@ namespace Pruebas
             var _emisor = GetEmisior;
 
             //Leer el certificado(Estoy usando uno generado de manera gratuita en https://llama.pe/certificado-digital-de-prueba-sunat)
+#if NET9_0
+            var _certificado = X509CertificateLoader.LoadPkcs12FromFile("20606433094.pfx", "1234567890");
+#else
             var _bytesCertificado = File.ReadAllBytes("20606433094.pfx");
             var _certificado = new X509Certificate2(_bytesCertificado, "1234567890", X509KeyStorageFlags.MachineKeySet);
+#endif
+
 
             //El valor de esta variable se refleja en el tag <cac:Signature><cbc:ID> en el XML
             var _signature = "signatureMIEMPRESA";
@@ -78,9 +84,16 @@ namespace Pruebas
                 ConsoleEx.WriteLine("20: RETENCION FACTURA SOLES");
                 ConsoleEx.WriteLine("21: RETENCION FACTURA DOLARES - CON TIPO DE CAMBIO");
                 ConsoleEx.WriteLine("22: REVERSION (BAJAS DE RETENCIONES)");
+                ConsoleEx.WriteLine("23: GUIA REMITENTE CON INFORMACION ADICIONAL EN 'UBLExtension'", ConsoleColor.Blue);
+                ConsoleEx.WriteLine("24: FACTURA CON INFORMACION ADICIONAL EN 'UBLExtension'", ConsoleColor.Blue);
+                ConsoleEx.WriteLine("25: GUIA REMISION REMITENTE - EXPORTACION (PENDIENTE DE VERIFICACION CON SUNAT)");
+                ConsoleEx.WriteLine("26: FACTURA AL CONTADO PAGO CON DEPOSITO EN CUENTA (MEDIO DE PAGO CATALOGO N° 59)");
+                ConsoleEx.WriteLine("27: BOLETA GRATUITA GRABADA (RETIRO POR ENTREGA A TRABAJADORES)");
 
+#if NET462_OR_GREATER || NET6_0_OR_GREATER
                 //Pruebas de envio()
-                ConsoleEx.WriteLine("P1: ENVIAR GUIA REMITENTE");
+                ConsoleEx.WriteLine("P1: ENVIAR GUIA REMITENTE",ConsoleColor.Green);
+#endif
 
                 ConsoleEx.Write("\nX", ConsoleColor.Red);
                 ConsoleEx.WriteLine(": Salir");
@@ -160,9 +173,29 @@ namespace Pruebas
                     case "22":
                         EjemploComunicacionBaja(ComunicacionBaja2.GetDocumento(), _emisor, _certificado, _signature);
                         break;
+                    case "23":
+                        EjemploGRE(GRERemitente4.GetDocumento(), _emisor, _certificado, _signature);
+                        break;
+                    case "24":
+                        EjemploCPE(CPEFactura10.GetDocumento(), _emisor, _certificado, _signature);
+                        break;
+                    case "25":
+                        EjemploGRE(GRERemitente5.GetDocumento(), _emisor, _certificado, _signature);
+                        break;
+                    case "26":
+                        EjemploCPE(CPEFactura11.GetDocumento(), _emisor, _certificado, _signature);
+                        break;
+                    case "27":
+                        EjemploCPE(CPEBoleta4.GetDocumento(), _emisor, _certificado, _signature);
+                        break;
+
+#if NET462_OR_GREATER || NET6_0_OR_GREATER
+
                     case "P1":
                         EnvioGRE1.Run();
                         break;
+#endif
+
                     case "X":
                         salir = true;
                         break;
@@ -298,7 +331,7 @@ namespace Pruebas
             ConsoleEx.WriteLine("==============================", ConsoleColor.Blue);
             ConsoleEx.WriteLine($"Nombre archivo: {nombreArchivo}.zip");
             ConsoleEx.WriteLine($"DigestValue: {digestValue}");
-            ConsoleEx.WriteLine($"Directorio: {_pathArchivoZipXml}");
+            ConsoleEx.WriteLine($"Directorio: {GetPathStorage}");
             ConsoleEx.WriteLine("-------------------------", ConsoleColor.Green);
             ConsoleEx.WriteLine("\nPresione una tecla para continuar.");
             ConsoleEx.ReadKey();
