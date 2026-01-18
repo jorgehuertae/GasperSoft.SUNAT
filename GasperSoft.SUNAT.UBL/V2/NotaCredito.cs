@@ -212,7 +212,10 @@ namespace GasperSoft.SUNAT.UBL.V2
                 LegalMonetaryTotal = Comun.GetLegalMonetaryTotal(datos),
 
                 //Leyenda
-                Note = Comun.GetNotes(datos)
+                Note = Comun.GetNotes(datos),
+
+                //Número de la orden de compra
+                OrderReference = Comun.GetOrdenReferencia(datos)
             };
 
             if (datos.informacionPago?.formaPago == FormaPagoType.Credito && datos.informacionPago?.cuotas?.Count > 0)

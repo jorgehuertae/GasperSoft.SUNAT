@@ -245,7 +245,10 @@ namespace GasperSoft.SUNAT.UBL.V2
                 RequestedMonetaryTotal = GetRequestedMonetaryTotal(datos),
 
                 //Leyenda
-                Note = Comun.GetNotes(datos)
+                Note = Comun.GetNotes(datos),
+
+                //Número de la orden de compra
+                OrderReference = Comun.GetOrdenReferencia(datos)
             };
 
             return _debitNote;

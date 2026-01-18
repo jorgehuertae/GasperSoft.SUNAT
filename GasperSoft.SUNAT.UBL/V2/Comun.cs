@@ -2539,5 +2539,21 @@ namespace GasperSoft.SUNAT.UBL.V2
 
             return _ublExtension;
         }
+
+        internal static OrderReferenceType GetOrdenReferencia(CPEType datos)
+        {
+            if (!string.IsNullOrEmpty(datos.ordenCompra))
+            {
+                return new OrderReferenceType()
+                {
+                    ID = new IDType()
+                    {
+                        Value = datos.ordenCompra
+                    }
+                };
+            }
+
+            return null;
+        }
     }
 }
