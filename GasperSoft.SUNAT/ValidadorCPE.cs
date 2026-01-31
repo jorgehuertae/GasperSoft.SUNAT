@@ -1673,23 +1673,11 @@ namespace GasperSoft.SUNAT
 
             if (_cpe.descuentoGlobalNoAfectaBI?.tasa > 0)
             {
-                decimal _montoBaseDescuentoGlobalNoAfectaBICalculado = _operacionesExportacionxLinea + _operacionesInafectasxLinea + _operacionesExoneradasxLinea;
+                var _descuentoGlobalNoAfectaBICalculado = _cpe.descuentoGlobalNoAfectaBI.montoBase * _cpe.descuentoGlobalNoAfectaBI.tasa;
 
-                _montoBaseDescuentoGlobalNoAfectaBICalculado += Convert.ToDecimal(_cpe.detalles.Sum(x => x.otrosCargosNoAfectaBI?.importe));
-
-
-                var _descuentoGlobalNoAfectaBICalculado = _montoBaseDescuentoGlobalNoAfectaBICalculado * _cpe.descuentoGlobalNoAfectaBI.tasa;
-
-                if (!ValidarToleranciaCalculo(_cpe.descuentoGlobalNoAfectaBI.montoBase, decimal.Round(_montoBaseDescuentoGlobalNoAfectaBICalculado, 2), _toleranciaCalculo))
+                if (!ValidarToleranciaCalculo(_cpe.descuentoGlobalNoAfectaBI.importe, decimal.Round(_descuentoGlobalNoAfectaBICalculado, 2), _toleranciaCalculo))
                 {
-                    _mensajesError.AddMensaje(CodigoError.V2000, $"descuentoGlobalNoAfectaBI.montoBase incorrecto Valor enviado: {_cpe.descuentoGlobalNoAfectaBI.montoBase} Valor calculado: {decimal.Round(_montoBaseDescuentoGlobalNoAfectaBICalculado, 2)}; Formula: descuentoGlobalNoAfectaBI.montoBase = (Suma del 'valorVenta' de cada detalle que tenga 'codAfectacionIGV' = '20','30'´ ó '40') + (Suma del 'montoOtrosCargosNoAfectaBI' de cada detalle)");
-                }
-                else
-                {
-                    if (!ValidarToleranciaCalculo(_cpe.descuentoGlobalNoAfectaBI.importe, decimal.Round(_descuentoGlobalNoAfectaBICalculado, 2), _toleranciaCalculo))
-                    {
-                        _mensajesError.AddMensaje(CodigoError.V2000, $"descuentoGlobalNoAfectaBI.importe incorrecto Valor enviado: {_cpe.descuentoGlobalNoAfectaBI.importe} Valor calculado: {decimal.Round(_descuentoGlobalNoAfectaBICalculado, 2)}; Formula: descuentoGlobalNoAfectaBI.importe = descuentoGlobalNoAfectaBI.montoBase * descuentoGlobalNoAfectaBI.tasa");
-                    }
+                    _mensajesError.AddMensaje(CodigoError.V2000, $"descuentoGlobalNoAfectaBI.importe incorrecto Valor enviado: {_cpe.descuentoGlobalNoAfectaBI.importe} Valor calculado: {decimal.Round(_descuentoGlobalNoAfectaBICalculado, 2)}; Formula: descuentoGlobalNoAfectaBI.importe = descuentoGlobalNoAfectaBI.montoBase * descuentoGlobalNoAfectaBI.tasa");
                 }
             }
 
