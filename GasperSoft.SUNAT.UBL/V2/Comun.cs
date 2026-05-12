@@ -2105,7 +2105,7 @@ namespace GasperSoft.SUNAT.UBL.V2
         {
             var _descuentosCargos = new List<AllowanceChargeType>();
 
-            if (datos.tasaDescuentoGlobal > 0 && datos.descuentoGlobalAfectaBI != null)
+            if (datos.descuentoGlobalAfectaBI?.tasa > 0)
             {
                 _descuentosCargos.Add(new AllowanceChargeType()
                 {
@@ -2127,7 +2127,7 @@ namespace GasperSoft.SUNAT.UBL.V2
                     //Factor de cargo/descuento
                     MultiplierFactorNumeric = new MultiplierFactorNumericType()
                     {
-                        Value = datos.tasaDescuentoGlobal
+                        Value = datos.descuentoGlobalAfectaBI.tasa
                     },
 
                     //Monto del descuento
@@ -2146,7 +2146,7 @@ namespace GasperSoft.SUNAT.UBL.V2
                 });
             }
 
-            if (datos.tasaDescuentoGlobal > 0 && datos.descuentoGlobalNoAfectaBI != null)
+            if (datos.descuentoGlobalNoAfectaBI?.tasa > 0)
             {
                 _descuentosCargos.Add(new AllowanceChargeType()
                 {
@@ -2168,7 +2168,7 @@ namespace GasperSoft.SUNAT.UBL.V2
                     //Factor de cargo/descuento
                     MultiplierFactorNumeric = new MultiplierFactorNumericType()
                     {
-                        Value = datos.tasaDescuentoGlobal
+                        Value = datos.descuentoGlobalNoAfectaBI.tasa
                     },
 
                     //Monto del descuento
@@ -2538,6 +2538,22 @@ namespace GasperSoft.SUNAT.UBL.V2
             };
 
             return _ublExtension;
+        }
+
+        internal static OrderReferenceType GetOrdenReferencia(CPEType datos)
+        {
+            if (!string.IsNullOrEmpty(datos.ordenCompra))
+            {
+                return new OrderReferenceType()
+                {
+                    ID = new IDType()
+                    {
+                        Value = datos.ordenCompra
+                    }
+                };
+            }
+
+            return null;
         }
     }
 }

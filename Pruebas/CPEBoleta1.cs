@@ -111,7 +111,6 @@ namespace Pruebas
                 adquirente = _adquirente,
                 detalles = _detalles,
                 codMoneda = "PEN",//Catalogo N° 02
-                tasaDescuentoGlobal = 0.05m, //5%
                 descuentoGlobalAfectaBI = _descuento,
                 totalOperacionesGravadas = 1407.29m,
                 totalOperacionesGratuitas = 4.8m,

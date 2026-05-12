@@ -12,22 +12,6 @@ namespace GasperSoft.SUNAT.UBL.V2
     /// <remarks/>
     public static class FacturaBoleta
     {
-        private static OrderReferenceType GetOrdenReferencia(CPEType datos)
-        {
-            if (!string.IsNullOrEmpty(datos.ordenCompra))
-            {
-                return new OrderReferenceType()
-                {
-                    ID = new IDType()
-                    {
-                        Value = datos.ordenCompra
-                    }
-                };
-            }
-
-            return null;
-        }
-
         private static void SetDetraccion(InvoiceType invoice, CPEType datos)
         {
             var _paymentTerms = new List<PaymentTermsType>();
@@ -256,7 +240,7 @@ namespace GasperSoft.SUNAT.UBL.V2
                 Note = Comun.GetNotes(datos),
 
                 //Número de la orden de compra
-                OrderReference = GetOrdenReferencia(datos)
+                OrderReference = Comun.GetOrdenReferencia(datos)
             };
 
             if (datos.informacionPago != null)

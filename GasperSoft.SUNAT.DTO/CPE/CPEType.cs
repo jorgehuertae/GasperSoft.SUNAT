@@ -86,11 +86,6 @@ namespace GasperSoft.SUNAT.DTO.CPE
         public string codMoneda { get; set; }
 
         /// <summary>
-        /// La tasa de descuento aplicada a operaciones Gravadas-Exoneradas-Inafectas y Exportacion
-        /// </summary>
-        public decimal tasaDescuentoGlobal { get; set; }
-
-        /// <summary>
         /// Es la sumatoria de la propiedad valorVenta de items gravados(valor de codAfectacionIgv  del item comiensa con 1..)
         /// </summary>
         public decimal totalOperacionesGravadas { get; set; }
@@ -121,7 +116,7 @@ namespace GasperSoft.SUNAT.DTO.CPE
         public DescuentoCargoType descuentoGlobalAfectaBI { get; set; }
 
         /// <summary>
-        ///         /// Al igual que 'descuentoOperacionesGravadas' la tasa sera el valor de 'tasaDescuentoGlobal'
+        /// Al igual que 'descuentoOperacionesGravadas' la tasa sera el valor de 'tasaDescuentoGlobal'
         /// Colocar aqui la suma de descuento aplicado a operaciones Exonerdas,Inafectas,Exportacion,Recargo al consumo
         /// </summary>
         public DescuentoCargoType descuentoGlobalNoAfectaBI { get; set; }
